@@ -153,13 +153,19 @@ namespace MonoRemoteDebugger.VSExtension
         {
             try
             {
+                System.Diagnostics.PresentationTraceSources.DataBindingSource.Switch.Level = System.Diagnostics.SourceLevels.Critical;
+
                 if (server != null)
                 {
                     server.Stop();
                     server = null;
                 }
 
-                monoExtension.BuildSolution();
+                var failedBuilds = monoExtension.BuildSolution();
+                if (failedBuilds > 0)
+                {
+                    throw new Exception($"Build failed! Project failed to build: {failedBuilds}.");
+                }
 
                 using (server = new MonoDebugServer())
                 {
@@ -190,7 +196,11 @@ namespace MonoRemoteDebugger.VSExtension
                 try
                 {
                     int timeout = dlg.ViewModel.AwaitTimeout;
-                    monoExtension.BuildSolution();
+                    var failedBuilds = monoExtension.BuildSolution();
+                    if (failedBuilds > 0)
+                    {
+                        throw new Exception($"Build failed! Project failed to build: {failedBuilds}.");
+                    }
                     if (dlg.ViewModel.SelectedServer != null)
                         await monoExtension.AttachDebugger(dlg.ViewModel.SelectedServer.IpAddress.ToString(), timeout);
                     else if (!string.IsNullOrWhiteSpace(dlg.ViewModel.ManualIp))

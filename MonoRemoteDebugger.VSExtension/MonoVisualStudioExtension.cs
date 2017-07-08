@@ -29,10 +29,11 @@ namespace MonoRemoteDebugger.VSExtension
             _dte = dTE;
         }
 
-        internal void BuildSolution()
+        internal int BuildSolution()
         {
             var sb = (SolutionBuild2) _dte.Solution.SolutionBuild;
             sb.Build(true);
+            return sb.LastBuildInfo;
         }
 
         internal string GetStartupAssemblyPath()
