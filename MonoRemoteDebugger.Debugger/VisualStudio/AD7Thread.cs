@@ -7,6 +7,45 @@ using MonoRemoteDebugger.Debugger.VisualStudio;
 
 namespace Microsoft.MIDebugEngine
 {
+    internal class AD7Assembly : IDebugModule2
+    {
+        private readonly AD7Engine _engine;
+
+        public AssemblyMirror AssemblyMirror { get; private set; }
+
+        public AD7Assembly(AD7Engine engine, AssemblyMirror assembly)
+        {
+            _engine = engine;
+            AssemblyMirror = assembly;
+        }
+
+        #region IDebugModule2
+
+        public int GetInfo(enum_MODULE_INFO_FIELDS dwFields, MODULE_INFO[] pinfo)
+        {
+            dwFields = enum_MODULE_INFO_FIELDS.MIF_NONE;
+            var assemblyName = AssemblyMirror.GetName();
+            
+            pinfo[0].m_bstrName = assemblyName.FullName;
+            dwFields |= enum_MODULE_INFO_FIELDS.MIF_NAME;
+
+            pinfo[0].m_bstrVersion = assemblyName.Version.ToString();
+            dwFields |= enum_MODULE_INFO_FIELDS.MIF_VERSION;
+            
+            dwFields |= enum_MODULE_INFO_FIELDS.MIF_URL;
+            pinfo[0].m_bstrUrl = AssemblyMirror.Location;
+            
+            return VSConstants.S_OK;
+        }
+
+        public int ReloadSymbols_Deprecated(string pszUrlToSymbols, out string pbstrDebugMessage)
+        {
+            pbstrDebugMessage = null;
+            return VSConstants.E_NOTIMPL;
+        }
+
+        #endregion
+    }
     internal class AD7Thread : IDebugThread2
     {
         private readonly AD7Engine _engine;

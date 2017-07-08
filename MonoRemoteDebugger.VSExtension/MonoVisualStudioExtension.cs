@@ -193,18 +193,23 @@ namespace MonoRemoteDebugger.VSExtension
 
         private IntPtr GetDebugInfo(string args, string targetExe, string outputDirectory)
         {
-            var info = new VsDebugTargetInfo();
-            info.cbSize = (uint) Marshal.SizeOf(info);
-            info.dlo = DEBUG_LAUNCH_OPERATION.DLO_CreateProcess;
+            var info = new VsDebugTargetInfo()
+            {
+                //cbSize = (uint)Marshal.SizeOf(info),
+                dlo = DEBUG_LAUNCH_OPERATION.DLO_CreateProcess,
+                bstrExe = Path.Combine(outputDirectory, targetExe),
+                bstrCurDir = outputDirectory,
+                bstrArg = args, // no command line parameters
+                bstrRemoteMachine = null, // debug locally                
+                grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_StopDebuggingOnEnd, // When this process ends, debugging is stopped.
+                //grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_DetachOnStop, // Detaches instead of terminating when debugging stopped.
+                fSendStdoutToOutputWindow = 0,
+                clsidCustom = AD7Guids.EngineGuid,
+                //bstrEnv = "",
+                bstrOptions = "" // add debug engine options
+            };
 
-            info.bstrExe = Path.Combine(outputDirectory, targetExe);
-            info.bstrCurDir = outputDirectory;
-            info.bstrArg = args; // no command line parameters
-            info.bstrRemoteMachine = null; // debug locally
-            info.grfLaunch = (uint) __VSDBGLAUNCHFLAGS.DBGLAUNCH_StopDebuggingOnEnd;
-            info.fSendStdoutToOutputWindow = 0;
-            info.clsidCustom = AD7Guids.EngineGuid;
-            info.grfLaunch = 0;
+            info.cbSize = (uint)Marshal.SizeOf(info);
 
             IntPtr pInfo = Marshal.AllocCoTaskMem((int) info.cbSize);
             Marshal.StructureToPtr(info, pInfo, false);

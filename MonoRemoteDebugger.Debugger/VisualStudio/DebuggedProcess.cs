@@ -37,6 +37,7 @@ namespace Microsoft.MIDebugEngine
         private readonly Dictionary<string, TypeSummary> _types = new Dictionary<string, TypeSummary>();
         private volatile bool _isRunning = true;
         private ConcurrentDictionary<long, AD7Thread> _threads = new ConcurrentDictionary<long, AD7Thread>();
+        private ConcurrentBag<AD7Assembly> _assemblies = new ConcurrentBag<AD7Assembly>();
         private VirtualMachine _vm;
 
         private EngineCallback _callback;
@@ -46,6 +47,7 @@ namespace Microsoft.MIDebugEngine
         private StepEventRequest currentStepRequest;
         private bool _isStepping;
         private IDebugSession session;
+        private AutoResetEvent _startVMEvent = new AutoResetEvent(false);
 
         public DebuggedProcess(AD7Engine engine, IPAddress ipAddress, EngineCallback callback)
         {
@@ -87,6 +89,24 @@ namespace Microsoft.MIDebugEngine
         {
             if (_vm != null)
                 return;
+            //VMStart = 0,
+            //VMDeath = 1,
+            //ThreadStart = 2,
+            //ThreadDeath = 3,
+            //AppDomainCreate = 4,
+            //AppDomainUnload = 5,
+            //MethodEntry = 6,
+            //MethodExit = 7,
+            //AssemblyLoad = 8,
+            //AssemblyUnload = 9,
+            //Breakpoint = 10,
+            //Step = 11,
+            //TypeLoad = 12,
+            //Exception = 13,
+            //KeepAlive = 14,
+            //UserBreak = 15,
+            //UserLog = 16,
+            //VMDisconnect = 99
 
             _vm = VirtualMachineManager.Connect(new IPEndPoint(_ipAddress, GlobalConfig.Current.DebuggerAgentPort));
             _vm.EnableEvents(EventType.AssemblyLoad,
@@ -107,6 +127,8 @@ namespace Microsoft.MIDebugEngine
                     HandleEventSet(ev);
                 }
 
+                _startVMEvent.Reset();
+
                 Task.Factory.StartNew(ReceiveThread, TaskCreationOptions.LongRunning);
             }
             else
@@ -119,9 +141,18 @@ namespace Microsoft.MIDebugEngine
         {
         }
 
+        internal void StartVMEventHandling()
+        {
+            _startVMEvent.Set();
+        }
+
         private void ReceiveThread()
         {
-            Thread.Sleep(3000);
+            if (!_startVMEvent.WaitOne(5000))
+            {
+                logger.Error($"Error {nameof(ReceiveThread)}(): {nameof(StartVMEventHandling)} wasn't called!");
+            }
+
             _vm.Resume();
 
             while (_isRunning)
@@ -153,6 +184,9 @@ namespace Microsoft.MIDebugEngine
             
             switch (type)
             {
+                case EventType.AssemblyLoad:
+                    HandleAssemblyLoad((AssemblyLoadEvent)ev);
+                    break;
                 case EventType.UserBreak:
                     if (!HandleUserBreak((UserBreakEvent)ev))
                         return;
@@ -240,6 +274,8 @@ namespace Microsoft.MIDebugEngine
             }
         }
 
+        
+
         private AD7Thread GetThread(Event ev)
         {
             var domain = ev.Thread.Domain.FriendlyName;
@@ -250,6 +286,16 @@ namespace Microsoft.MIDebugEngine
         internal AD7Thread[] GetThreads()
         {
             return _threads.Values.ToArray();
+        }
+
+        internal AD7Assembly[] GetLoadedAssemblies()
+        {
+            return _assemblies.ToArray();
+        }
+
+        private void HandleAssemblyLoad(AssemblyLoadEvent ev)
+        {
+            _assemblies.Add(new AD7Assembly(_engine, ev.Assembly));
         }
 
         private void HandleStep(StepEvent stepEvent)
