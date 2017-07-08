@@ -35,7 +35,6 @@ namespace Microsoft.MIDebugEngine
     internal class AD7StoppingEvent : IDebugEvent2
     {
         public const uint Attributes = (uint)enum_EVENTATTRIBUTES.EVENT_ASYNC_STOP;
-        //public const uint Attributes = (uint) enum_EVENTATTRIBUTES.EVENT_SYNC_STOP;
 
         int IDebugEvent2.GetAttributes(out uint eventAttributes)
         {
@@ -384,7 +383,7 @@ namespace Microsoft.MIDebugEngine
             _name = name;
             _code = code;
             _description = description ?? name;
-            _category = exceptionCategory ?? new Guid(EngineConstants.EngineId);
+            _category = exceptionCategory ?? AD7Guids.EngineGuid;
 
             switch (state)
             {
