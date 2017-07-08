@@ -19,6 +19,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         public DebuggedProcess DebuggedProcess { get; private set; }
         public EngineCallback Callback { get; private set; }
         public MonoProcess RemoteProcess { get; private set; }
+        public bool IsSuspended { get; set; }
 
         public AD7Engine()
         {

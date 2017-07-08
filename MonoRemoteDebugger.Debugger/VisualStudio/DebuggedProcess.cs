@@ -153,7 +153,7 @@ namespace Microsoft.MIDebugEngine
                 logger.Error($"Error {nameof(ReceiveThread)}(): {nameof(StartVMEventHandling)} wasn't called!");
             }
 
-            _vm.Resume();
+            ResumeVM();
 
             while (_isRunning)
             {
@@ -175,10 +175,11 @@ namespace Microsoft.MIDebugEngine
                 }
             }
         }
-
+        
         private void HandleEventSet(Event ev)
         {
             var type = ev.EventType;
+            _engine.IsSuspended = true;
 
             logger.Trace($"HandleEventSet: {ev}");
             
@@ -264,7 +265,7 @@ namespace Microsoft.MIDebugEngine
             {
                 if (type != EventType.VMStart)
                 {
-                    _vm?.Resume();
+                    ResumeVM();
                 }
             }
             catch (VMNotSuspendedException)
@@ -461,7 +462,7 @@ namespace Microsoft.MIDebugEngine
         {
             try
             {
-                _vm.Resume();
+                ResumeVM();
             }
             catch (Exception ex)
             {
@@ -550,7 +551,7 @@ namespace Microsoft.MIDebugEngine
                 currentStepRequest.Enable();
             }
 
-            _vm.Resume();
+            ResumeVM();
         }
 
         public void AssociateDebugSession(IDebugSession session)
@@ -575,6 +576,12 @@ namespace Microsoft.MIDebugEngine
             string exceptionMessage = e.Message.TrimEnd(' ', '\t', '.', '\r', '\n');
             string userMessage = string.Format(CultureInfo.CurrentCulture, MICoreResources.Error_ExceptionInOperation, exceptionMessage);
             _callback.OnError(userMessage);
+        }
+
+        private void ResumeVM()
+        {
+            _engine.IsSuspended = false;
+            _vm?.Resume();
         }
     }
 }
