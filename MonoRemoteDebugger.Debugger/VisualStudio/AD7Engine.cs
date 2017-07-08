@@ -138,7 +138,10 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             DebugHelper.TraceEnteringMethod();
 
             Callback = new EngineCallback(this, ad7Callback);
-            DebuggedProcess = new DebuggedProcess(this, IPAddress.Parse(args), Callback);
+            var hostIp = IPAddress.Parse(args);
+            HostName = hostIp.ToString();
+            ProgramName = exe;
+            DebuggedProcess = new DebuggedProcess(this, hostIp, Callback);
             DebuggedProcess.ApplicationClosed += OnApplicationClosed;
             DebuggedProcess.StartDebugging();
 
@@ -346,5 +349,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             get;
             private set;
         }
+        public string HostName { get; private set; }
+        public string ProgramName { get; private set; }
     }
 }

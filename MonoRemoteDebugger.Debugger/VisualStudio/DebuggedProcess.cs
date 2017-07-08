@@ -82,7 +82,7 @@ namespace Microsoft.MIDebugEngine
                 _vm = value;
             }
         }
-
+        
         public event EventHandler ApplicationClosed;
 
         internal void StartDebugging()
