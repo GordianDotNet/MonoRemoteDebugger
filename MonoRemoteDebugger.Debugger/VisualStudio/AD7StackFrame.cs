@@ -55,7 +55,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 // Step01: local
                 //##############
 
-                var local = ThreadContext.Method.GetLocals().Where(x => x.Name == pszCode).SingleOrDefault();
+                var local = ThreadContext.Method.GetLocals().Where(x => x.Name == pszCode).FirstOrDefault();
                 if (local != null)
                 {
                     //Debug.WriteLine($"=> ParseText.LocalVariable: pszCode={pszCode}, Name={local?.Name}, Type={local?.Type?.FullName}");

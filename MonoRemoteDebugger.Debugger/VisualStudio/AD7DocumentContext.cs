@@ -79,11 +79,21 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 pguidLanguage = AD7Guids.guidLanguageCs;
             }
             // NOTE: Use a case sensitive comparison, since '.C' can be used for C++ on unix
-            else if (fileExtension == ".c")
+            else if (fileExtension.Equals(".c", StringComparison.OrdinalIgnoreCase))
             {
                 pbstrLanguage = "C";
                 pguidLanguage = AD7Guids.guidLanguageC;
             }
+            //else if (fileExtension.Equals(".vb", StringComparison.OrdinalIgnoreCase))
+            //{
+            //    pbstrLanguage = "VB";
+            //    pguidLanguage = AD7Guids.guidLanguageVb;
+            //}
+            //else if (fileExtension.Equals(".fs", StringComparison.OrdinalIgnoreCase))
+            //{
+            //    pbstrLanguage = "F#";
+            //    pguidLanguage = AD7Guids.guidLanguageFSharp;
+            //}
             else
             {
                 pbstrLanguage = "C++";

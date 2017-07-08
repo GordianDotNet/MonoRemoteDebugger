@@ -47,7 +47,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         {
             DebugHelper.TraceEnteringMethod();
             pbstrHostName = null;
-            _process.StartDebugging();
+            //_process.StartDebugging();
             return VSConstants.S_OK;
         }
 

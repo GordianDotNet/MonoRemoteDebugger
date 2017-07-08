@@ -169,6 +169,13 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                     SyntaxNode node = location.SourceTree.GetRoot().FindNode(location.SourceSpan, true, true);
 
                     var method = GetParentMethod<MethodDeclarationSyntax>(node.Parent);
+
+                    if (method == null)
+                    {
+                        breakpointLocation = null;
+                        return false;
+                    }
+
                     string methodName = method.Identifier.Text;
 
                     var cl = GetParentMethod<ClassDeclarationSyntax>(method);

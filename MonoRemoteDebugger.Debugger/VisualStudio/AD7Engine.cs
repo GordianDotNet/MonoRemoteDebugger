@@ -180,7 +180,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         {
             // VS Code currently isn't providing a thread Id in certain cases. Work around this by handling null values.
             AD7Thread thread = pThread as AD7Thread;
-            _dispatcher.Queue(() => DebuggedProcess.Continue(thread?.GetDebuggedThread()));
+            _dispatcher.Queue(() => DebuggedProcess.Continue(thread));
             return VSConstants.S_OK;
         }
 
@@ -223,8 +223,9 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
 
         public int EnumThreads(out IEnumDebugThreads2 ppEnum)
         {
-            ppEnum = null;
-            return VSConstants.E_NOTIMPL;
+            var threads = DebuggedProcess.GetThreads();
+            ppEnum = new AD7ThreadEnum(threads);
+            return VSConstants.S_OK;
         }
 
         public int Execute()

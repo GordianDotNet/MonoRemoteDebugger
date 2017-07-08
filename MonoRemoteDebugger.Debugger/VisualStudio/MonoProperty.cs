@@ -187,6 +187,10 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                         }
                     }
                 }
+                else if (mirror is Value)
+                {
+                    value = mirror as Value;
+                }
                 else if (mirror != null)
                 {
                     errorMessage = $"Error: Mirror is not supported ({mirror?.GetType().FullName})";
@@ -379,6 +383,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             var fieldMirror = mirror as FieldInfoMirror;
             var parameterMirror = mirror as ParameterInfoMirror;
             var localMirror = mirror as LocalVariable;
+            var objectMirror = mirror as ObjectMirror;
 
             //if (methodMirror != null)
             //{
@@ -415,6 +420,13 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 info.Name = localMirror.Name;
                 info.FullName = localMirror.Type.FullName;
                 info.Type = localMirror.Type;
+            }
+            else if (objectMirror != null)
+            {
+                info = new MirrorCommonInfo();
+                info.Name = "#ObjectMirror#-UNKNOWN-NAME";
+                info.FullName = objectMirror.Type.FullName;
+                info.Type = objectMirror.Type;
             }
 
             return info;

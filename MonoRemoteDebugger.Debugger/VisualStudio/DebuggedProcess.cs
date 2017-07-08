@@ -14,8 +14,9 @@ using System.Globalization;
 using MICore;
 using MonoRemoteDebugger.Debugger.DebugEngineHost;
 using System.Diagnostics;
-using Techl;
 using MonoRemoteDebugger.SharedLib;
+using System.Collections.Concurrent;
+using System.Text;
 
 namespace Microsoft.MIDebugEngine
 {
@@ -35,7 +36,7 @@ namespace Microsoft.MIDebugEngine
         private readonly List<AD7PendingBreakpoint> _pendingBreakpoints = new List<AD7PendingBreakpoint>();
         private readonly Dictionary<string, TypeSummary> _types = new Dictionary<string, TypeSummary>();
         private volatile bool _isRunning = true;
-        private AD7Thread _mainThread;
+        private ConcurrentDictionary<long, AD7Thread> _threads = new ConcurrentDictionary<long, AD7Thread>();
         private VirtualMachine _vm;
 
         private EngineCallback _callback;
@@ -43,7 +44,7 @@ namespace Microsoft.MIDebugEngine
         public ProcessState ProcessState { get; private set; }
 
         private StepEventRequest currentStepRequest;
-        private bool isStepping;
+        private bool _isStepping;
         private IDebugSession session;
 
         public DebuggedProcess(AD7Engine engine, IPAddress ipAddress, EngineCallback callback)
@@ -101,14 +102,17 @@ namespace Microsoft.MIDebugEngine
             EventSet set = _vm.GetNextEventSet();
             if (set.Events.OfType<VMStartEvent>().Any())
             {
-                //TODO: review by techcap
-                _mainThread = new AD7Thread(_engine, new DebuggedThread(set.Events[0].Thread, _engine));
-                _engine.Callback.ThreadStarted(_mainThread);
+                foreach (Event ev in set.Events)
+                {
+                    HandleEventSet(ev);
+                }
 
                 Task.Factory.StartNew(ReceiveThread, TaskCreationOptions.LongRunning);
             }
             else
+            {
                 throw new Exception("Didnt get VMStart-Event!");
+            }
         }
 
         internal void Attach()
@@ -127,8 +131,8 @@ namespace Microsoft.MIDebugEngine
                     EventSet set = _vm.GetNextEventSet();
 
                     var type = set.Events.First().EventType;
-                    if (type != EventType.TypeLoad)
-                        Debug.Print($"Event : {set.Events.Select(e => e.EventType).StringJoin(",")}");
+                    //if (type != EventType.TypeLoad)
+                    //    Debug.Print($"Event : {set.Events.Select(e => e.EventType).StringJoin(",")}");
 
                     foreach (Event ev in set.Events)
                     {
@@ -145,8 +149,14 @@ namespace Microsoft.MIDebugEngine
         {
             var type = ev.EventType;
 
+            logger.Trace($"HandleEventSet: {ev}");
+            
             switch (type)
             {
+                case EventType.UserBreak:
+                    if (!HandleUserBreak((UserBreakEvent)ev))
+                        return;
+                    break;
                 case EventType.Breakpoint:
                     if (!HandleBreakPoint((BreakpointEvent)ev))
                         return;
@@ -159,7 +169,6 @@ namespace Microsoft.MIDebugEngine
                     RegisterType(typeEvent.Type);
                     TryBindBreakpoints();
                     break;
-
                 case EventType.UserLog:
                     UserLogEvent e = (UserLogEvent)ev;
                     HostOutputWindowEx.WriteLaunchError(e.Message);
@@ -168,6 +177,50 @@ namespace Microsoft.MIDebugEngine
                 case EventType.VMDisconnect:
                     Disconnect();
                     return;
+                case EventType.VMStart:
+                case EventType.ThreadStart:                    
+                    var domain = ev.Thread.Domain.FriendlyName;
+                    var threadId = ev.Thread.ThreadId;
+                    var newThread = new AD7Thread(_engine, ev.Thread);
+                    if (_threads.TryAdd(threadId, newThread))
+                    {
+                        _engine.Callback.ThreadStarted(newThread);
+                    }
+                    else
+                    {
+                        logger.Error($"Thread {threadId} already added!");
+                    }                                 
+                    break;
+                case EventType.ThreadDeath:
+                    var oldThreadId = ev.Thread.ThreadId;
+                    AD7Thread oldThread = null;
+                    if (!_threads.TryRemove(oldThreadId, out oldThread))
+                    {
+                        _engine.Callback.ThreadDestroyed(oldThread, 0);
+                    }
+                    else
+                    {
+                        logger.Error($"Thread {oldThreadId} not found!");
+                    }
+                    break;
+                case EventType.Exception:
+                    var exEvent = ev as ExceptionEvent;
+                    var exceptionObjectMirror = exEvent.Exception;
+                    var filter = Guid.NewGuid();
+                    IEnumDebugPropertyInfo2 propInfo;
+                    var monoProperty = new MonoProperty(exEvent.Thread.GetFrames().FirstOrDefault(), exceptionObjectMirror);
+                    var propInfo1 = new DEBUG_PROPERTY_INFO[1];
+                    monoProperty.GetPropertyInfo(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, 10000, null, 0, propInfo1);
+                    monoProperty.EnumChildren(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, ref filter, enum_DBG_ATTRIB_FLAGS.DBG_ATTRIB_ACCESS_ALL, "", 10000, out propInfo);
+                    var sbException = new StringBuilder();
+                    var propInfoCast = propInfo as AD7PropertyEnum;
+                    foreach (var prop in propInfoCast.GetData())
+                    {
+                        sbException.AppendLine($"{prop.bstrName} = {prop.bstrValue}");
+                    }
+                    logger.Error($"Exception thrown: {sbException.ToString()}");
+                    HostOutputWindowEx.WriteLaunchError($"Exception thrown: {sbException.ToString()}");
+                    break;
                 default:
                     logger.Trace(ev);
                     break;
@@ -175,13 +228,28 @@ namespace Microsoft.MIDebugEngine
 
             try
             {
-                _vm.Resume();
+                if (type != EventType.VMStart)
+                {
+                    _vm?.Resume();
+                }
             }
             catch (VMNotSuspendedException)
             {
                 if (type != EventType.VMStart && _vm.Version.AtLeast(2, 2))
                     throw;
             }
+        }
+
+        private AD7Thread GetThread(Event ev)
+        {
+            var domain = ev.Thread.Domain.FriendlyName;
+            var threadId = ev.Thread.ThreadId;
+            return _threads[threadId];
+        }
+
+        internal AD7Thread[] GetThreads()
+        {
+            return _threads.Values.ToArray();
         }
 
         private void HandleStep(StepEvent stepEvent)
@@ -192,15 +260,15 @@ namespace Microsoft.MIDebugEngine
                 currentStepRequest = null;
             }
 
-            _engine.Callback.StepCompleted(_mainThread);
+            _engine.Callback.StepCompleted(GetThread(stepEvent));
             logger.Trace("Stepping: {0}:{1}", stepEvent.Method.Name, stepEvent.Location);
 
-            isStepping = false;
+            _isStepping = false;
         }
 
         private bool HandleBreakPoint(BreakpointEvent ev)
         {
-            if (isStepping)
+            if (_isStepping)
                 return true;
 
             bool resume = false;
@@ -213,7 +281,27 @@ namespace Microsoft.MIDebugEngine
                 return true;
 
             Mono.Debugger.Soft.StackFrame[] frames = ev.Thread.GetFrames();
-            _engine.Callback.BreakpointHit(bp, _mainThread);
+            _engine.Callback.BreakpointHit(bp, GetThread(ev));
+
+            return resume;
+        }
+        
+        private bool HandleUserBreak(UserBreakEvent ev)
+        {
+            if (_isStepping)
+                return true;
+
+            bool resume = false;
+
+            AD7PendingBreakpoint bp;
+            lock (_pendingBreakpoints)
+                bp = _pendingBreakpoints.FirstOrDefault(x => x.LastRequest == ev.Request);
+
+            if (bp == null)
+                return true;
+
+            Mono.Debugger.Soft.StackFrame[] frames = ev.Thread.GetFrames();
+            _engine.Callback.BreakpointHit(bp, GetThread(ev));
 
             return resume;
         }
@@ -243,8 +331,8 @@ namespace Microsoft.MIDebugEngine
                             bp.Bound = true;
                             bp.LastRequest = request;
                             _engine.Callback.BoundBreakpoint(bp);
-                            //_vm.Resume();
-                            bp.CurrentThread = _mainThread;
+                            //_vm.Resume();                            
+                            //bp.CurrentThread = null;
                             countBounded++;
                         }
                         catch (Exception ex)
@@ -309,7 +397,7 @@ namespace Microsoft.MIDebugEngine
         /// On First run
         /// </summary>
         /// <param name="thread"></param>
-        internal void Continue(DebuggedThread thread)
+        internal void Continue(AD7Thread thread)
         {
             //_vm.Resume();
         }
@@ -322,10 +410,18 @@ namespace Microsoft.MIDebugEngine
         /// <summary>
         /// For Run
         /// </summary>
-        /// <param name="debuggedMonoThread"></param>
-        internal void Execute(AD7Thread debuggedMonoThread)
+        /// <param name="thread"></param>
+        internal void Execute(AD7Thread thread)
         {
-            _vm.Resume();
+            try
+            {
+                _vm.Resume();
+            }
+            catch (Exception ex)
+            {
+                // TODO
+                throw;
+            }
         }
 
 
@@ -370,7 +466,7 @@ namespace Microsoft.MIDebugEngine
 
         internal void Step(AD7Thread thread, enum_STEPKIND sk, enum_STEPUNIT stepUnit)
         {
-            if (!isStepping)
+            if (!_isStepping)
             {
                 if (currentStepRequest == null)
                     currentStepRequest = _vm.CreateStepRequest(thread.ThreadMirror);
@@ -379,7 +475,7 @@ namespace Microsoft.MIDebugEngine
                     currentStepRequest.Disable();
                 }
 
-                isStepping = true;
+                _isStepping = true;
                 if (stepUnit == enum_STEPUNIT.STEP_LINE || stepUnit == enum_STEPUNIT.STEP_STATEMENT)
                 {
                     switch (sk)
