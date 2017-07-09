@@ -311,8 +311,8 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         public int GetName(out string pbstrName)
         {
             DebugHelper.TraceEnteringMethod();
-            pbstrName = null;
-            return VSConstants.E_NOTIMPL;
+            pbstrName = System.IO.Path.GetFileName(ProgramName);
+            return VSConstants.S_OK;
         }
 
         public int GetProcess(out IDebugProcess2 ppProcess)
