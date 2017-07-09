@@ -324,9 +324,17 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 }
                 else if (value is StructMirror)
                 {
-                    isExpandable = true;
-                    var obj = ((StructMirror)value);                    
-                    propertyInfo.bstrValue = $"{{{obj.Type.Namespace}.{obj.Type.Name}}}";
+                    if (value is EnumMirror)
+                    {
+                        var obj = ((EnumMirror)value);
+                        propertyInfo.bstrValue = $"{obj.StringValue}";
+                    }
+                    else
+                    {
+                        isExpandable = true;
+                        var obj = ((StructMirror)value);
+                        propertyInfo.bstrValue = $"{{{obj.Type.Namespace}.{obj.Type.Name}}}";
+                    }
                 }
                 else if (value is ObjectMirror)
                 {
