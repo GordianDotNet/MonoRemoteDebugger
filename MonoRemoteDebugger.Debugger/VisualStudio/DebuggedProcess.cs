@@ -43,6 +43,7 @@ namespace Microsoft.MIDebugEngine
         private EngineCallback _callback;
         public AD_PROCESS_ID Id { get; private set; }
         public ProcessState ProcessState { get; private set; }
+        public bool IsRunning { get { return _isRunning; } }
 
         private StepEventRequest currentStepRequest;
         private bool _isStepping;
@@ -89,35 +90,28 @@ namespace Microsoft.MIDebugEngine
         {
             if (_vm != null)
                 return;
-            //VMStart = 0,
-            //VMDeath = 1,
-            //ThreadStart = 2,
-            //ThreadDeath = 3,
-            //AppDomainCreate = 4,
-            //AppDomainUnload = 5,
-            //MethodEntry = 6,
-            //MethodExit = 7,
-            //AssemblyLoad = 8,
-            //AssemblyUnload = 9,
-            //Breakpoint = 10,
-            //Step = 11,
-            //TypeLoad = 12,
-            //Exception = 13,
-            //KeepAlive = 14,
-            //UserBreak = 15,
-            //UserLog = 16,
-            //VMDisconnect = 99
 
             _vm = VirtualMachineManager.Connect(new IPEndPoint(_ipAddress, GlobalConfig.Current.DebuggerAgentPort));
-            _vm.EnableEvents(EventType.AssemblyLoad,
+            _vm.EnableEvents(
+                EventType.VMStart,
+                EventType.VMDeath,
                 EventType.ThreadStart,
                 EventType.ThreadDeath,
+                EventType.AppDomainCreate,
+                EventType.AppDomainUnload,
+                //MethodEntry,
+                //MethodExit,
+                EventType.AssemblyLoad,
                 EventType.AssemblyUnload,
-                EventType.UserBreak,
+                //Breakpoint,
+                //Step,
+                EventType.TypeLoad,
                 EventType.Exception,
-                EventType.UserLog,
                 EventType.KeepAlive,
-                EventType.TypeLoad);
+                EventType.UserBreak,                
+                EventType.UserLog,
+                EventType.VMDisconnect
+                );
 
             EventSet set = _vm.GetNextEventSet();
             if (set.Events.OfType<VMStartEvent>().Any())
