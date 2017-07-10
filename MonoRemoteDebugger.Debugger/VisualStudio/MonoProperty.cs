@@ -74,34 +74,27 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             {
                 var obj = value as StructMirror;
 
-                var properties = obj.Type.GetProperties().Cast<Mirror>();
-                var fields = obj.Type.GetFields();
-                var children = properties.Concat(fields).ToList();
+                List<KeyValuePair<string, Mirror>> children = GetChildren(obj.Type);
 
-                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x, obj).GetDebugPropertyInfo(dwFields)).ToArray());
+                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x.Value, obj).GetDebugPropertyInfo(dwFields)).ToArray());
                 
                 return VSConstants.S_OK;
             }
             else if (value is ObjectMirror)
             {
                 var obj = value as ObjectMirror;
-                
-                var properties = obj.Type.GetProperties().Cast<Mirror>();
-                var fields = obj.Type.GetFields();
-                
-                var children = properties.Concat(fields).ToList();
 
-                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x, obj).GetDebugPropertyInfo(dwFields)).ToArray());
+                List<KeyValuePair<string, Mirror>> children = GetChildren(obj.Type);
+
+                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x.Value, obj).GetDebugPropertyInfo(dwFields)).ToArray());
                 return VSConstants.S_OK;
             }
             else
             {
-                //TODO
+                System.Diagnostics.Debug.WriteLine($"Error - EnumChildren - Missing {value.GetType().FullName} implementation!");
+                ppEnum = new AD7PropertyEnum(new DEBUG_PROPERTY_INFO[0]);
+                return VSConstants.S_OK;
             }
-
-            //TODO 
-            ppEnum = new AD7PropertyEnum(new DEBUG_PROPERTY_INFO[0]);
-            return VSConstants.S_OK;
         }
         
         private Value GetValue(Mirror mirror, out enum_DBG_ATTRIB_FLAGS attributeInfo, out string errorMessage)
@@ -528,6 +521,21 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             }
 
             return attributeInfo;
+        }
+
+        private static List<KeyValuePair<string, Mirror>> GetChildren(TypeMirror type)
+        {
+            var children = new List<KeyValuePair<string, Mirror>>();
+            do
+            {
+                children.AddRange(type.GetFields().Select(x => new KeyValuePair<string, Mirror>(x.Name, x)));
+                children.AddRange(type.GetProperties().Select(x => new KeyValuePair<string, Mirror>(x.Name, x)));
+
+                type = type.BaseType;
+            } while (type != null);
+
+            children = children.Where(x => x.Key != null && x.Key.Length > 0 && x.Key[0] != '<').OrderBy(x => x.Key).ToList();
+            return children;
         }
     }
 

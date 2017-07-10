@@ -128,23 +128,24 @@ namespace Microsoft.MIDebugEngine
             //{
 
             //}
-
-            ptp[0].bstrPriority = ThreadMirror.IsThreadPoolThread ? "ThreadPoolThread" : "No ThreadPoolThread"; //_threadPriorityLastValue;
-            ptp[0].dwFields |= enum_THREADPROPERTY_FIELDS.TPF_PRIORITY;
-
-            ptp[0].dwThreadState = (uint)ThreadMirror.ThreadState;
-            ptp[0].dwFields |= enum_THREADPROPERTY_FIELDS.TPF_STATE;
-
+            
             if (_engine.DebuggedProcess.IsRunning)
             {
+                ptp[0].bstrPriority = ThreadMirror.IsThreadPoolThread ? "ThreadPoolThread" : "No ThreadPoolThread"; //_threadPriorityLastValue;
+                ptp[0].dwFields |= enum_THREADPROPERTY_FIELDS.TPF_PRIORITY;
+
+                ptp[0].dwThreadState = (uint)ThreadMirror.ThreadState;
+                ptp[0].dwFields |= enum_THREADPROPERTY_FIELDS.TPF_STATE;
+
                 StackFrame stackFrame = ThreadMirror.GetFrames().FirstOrDefault();
                 if (stackFrame != null)
                 {
                     _lastLocation = $"{stackFrame.FileName}!{stackFrame.Location.Method.Name} Line {stackFrame.Location.LineNumber}";
                 }
-            }
-            ptp[0].bstrLocation = _lastLocation;            
-            ptp[0].dwFields |= enum_THREADPROPERTY_FIELDS.TPF_LOCATION;
+
+                ptp[0].bstrLocation = _lastLocation;
+                ptp[0].dwFields |= enum_THREADPROPERTY_FIELDS.TPF_LOCATION;
+            }            
 
             return VSConstants.S_OK;
         }
