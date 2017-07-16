@@ -293,13 +293,15 @@ namespace MonoRemoteDebugger.VSExtension
 
                 if (startDebugger)
                 {
+                    var arguments = monoExtension.GetStartArguments();
+
                     if (deploy)
                     {
-                        var asyncTask = SSHDebugger.DeployAndDebug(options, settings.SSHPdb2mbdCommand, settings.SSHMonoDebugPort, targetExeFileName);
+                        var asyncTask = SSHDebugger.DeployAndDebug(options, settings.SSHPdb2mbdCommand, settings.SSHMonoDebugPort, targetExeFileName, arguments);
                     }
                     else
                     {
-                        var asyncTask = SSHDebugger.DebugAsync(options, settings.SSHPdb2mbdCommand, settings.SSHMonoDebugPort, targetExeFileName);
+                        var asyncTask = SSHDebugger.DebugAsync(options, settings.SSHPdb2mbdCommand, settings.SSHMonoDebugPort, targetExeFileName, arguments);
                     }
                 }
                 else
