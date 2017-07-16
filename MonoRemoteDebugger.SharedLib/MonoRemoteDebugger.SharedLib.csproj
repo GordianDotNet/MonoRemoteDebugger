@@ -70,6 +70,12 @@
       <HintPath>..\packages\NLog.4.2.1\lib\net45\NLog.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="Renci.SshNet, Version=2016.0.0.0, Culture=neutral, PublicKeyToken=1cee9f8bde3db106, processorArchitecture=MSIL">
+      <HintPath>..\packages\SSH.NET.2016.0.0\lib\net40\Renci.SshNet.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpCompress, Version=0.17.1.0, Culture=neutral, PublicKeyToken=afb0a02973931d96, processorArchitecture=MSIL">
+      <HintPath>..\packages\SharpCompress.0.17.1\lib\net45\SharpCompress.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
@@ -96,13 +102,17 @@
     <Compile Include="Server\MonoWebProcess.cs" />
     <Compile Include="Server\Pdb2MdbGenerator.cs" />
     <Compile Include="Server\MonoDebugServer.cs" />
+    <Compile Include="SSH\SSHDebugger.cs" />
+    <Compile Include="SSH\SshDeltaCopy.cs" />
     <Compile Include="StartDebuggingMessage.cs" />
     <Compile Include="StatusMessage.cs" />
     <Compile Include="TcpCommunication.cs" />
     <Compile Include="ZipFile.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
+    <None Include="packages.config">
+      <SubType>Designer</SubType>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\MonoRemoteDebugger.VSExtension\source.extension.resx">

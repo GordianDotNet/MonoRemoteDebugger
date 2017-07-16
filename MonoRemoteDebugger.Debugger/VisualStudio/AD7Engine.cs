@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Debugger.Interop;
 using Microsoft.MIDebugEngine;
+using MonoRemoteDebugger.SharedLib;
 
 namespace MonoRemoteDebugger.Debugger.VisualStudio
 {
@@ -138,10 +139,21 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             DebugHelper.TraceEnteringMethod();
 
             Callback = new EngineCallback(this, ad7Callback);
-            var hostIp = IPAddress.Parse(args);
+
+            // TODO refactoring required
+            var arguments = args.Split(' ');
+            var hostIp = (arguments.Length > 0) ? IPAddress.Parse(arguments[0]) : IPAddress.Loopback;
+            int debugPort;
+            if (arguments.Length > 1 && int.TryParse(arguments[1], out debugPort))
+            {                
+            }
+            else
+            {
+                debugPort = GlobalConfig.Current.DebuggerAgentPort;
+            }
             HostName = hostIp.ToString();
             ProgramName = exe;
-            DebuggedProcess = new DebuggedProcess(this, hostIp, Callback);
+            DebuggedProcess = new DebuggedProcess(this, hostIp, debugPort, Callback);
             DebuggedProcess.ApplicationClosed += OnApplicationClosed;
             DebuggedProcess.StartDebugging();
 

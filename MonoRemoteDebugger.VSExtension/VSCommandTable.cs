@@ -24,6 +24,10 @@ namespace MonoRemoteDebugger.VSExtension
         public const int cmdLocalDebugCode = 0x0101;
         public const int menuIDMainMenu = 0x0102;
         public const int cmdOpenLogFile = 0x0104;
+        public const int cmdDeployAndDebugOverSSH = 0x0105;
+        public const int cmdDeployOverSSH = 0x0106;
+        public const int cmdDebugOverSSH = 0x0107;
+        public const int cmdOpenSSHDebugConfig = 0x0108;
         public const int publish = 0x0001;
     }
 }

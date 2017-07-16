@@ -151,7 +151,7 @@ namespace MonoRemoteDebugger.VSExtension
                 await session.WaitForAnswerAsync(timeout);
             }
 
-            IntPtr pInfo = GetDebugInfo(ipAddress, targetExe, outputDirectory);
+            IntPtr pInfo = GetDebugInfo(ipAddress, GlobalConfig.Current.DebuggerAgentPort, targetExe, outputDirectory);
             var sp = new ServiceProvider((IServiceProvider) _dte);
             try
             {
@@ -181,6 +181,40 @@ namespace MonoRemoteDebugger.VSExtension
             }
         }
 
+        internal void AttachDebuggerToRunningProcess(string ipAddress, int debugPort)
+        {
+            string path = GetStartupAssemblyPath();
+            string targetExe = Path.GetFileName(path);
+            string outputDirectory = Path.GetDirectoryName(path);
+
+            IntPtr pInfo = GetDebugInfo(ipAddress, debugPort, targetExe, outputDirectory);
+            var sp = new ServiceProvider((IServiceProvider)_dte);
+            try
+            {
+                var dbg = (IVsDebugger)sp.GetService(typeof(SVsShellDebugger));
+                int hr = dbg.LaunchDebugTargets(1, pInfo);
+                Marshal.ThrowExceptionForHR(hr);
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
+                string msg;
+                var sh = (IVsUIShell)sp.GetService(typeof(SVsUIShell));
+                sh.GetErrorInfo(out msg);
+
+                if (!string.IsNullOrWhiteSpace(msg))
+                {
+                    logger.Error(msg);
+                }
+                throw;
+            }
+            finally
+            {
+                if (pInfo != IntPtr.Zero)
+                    Marshal.FreeCoTaskMem(pInfo);
+            }
+        }
+
         public static string ComputeHash(string file)
         {
             using (FileStream stream = File.OpenRead(file))
@@ -191,15 +225,16 @@ namespace MonoRemoteDebugger.VSExtension
             }
         }
 
-        private IntPtr GetDebugInfo(string args, string targetExe, string outputDirectory)
+        private IntPtr GetDebugInfo(string args, int debugPort, string targetExe, string outputDirectory)
         {
+            // TODO argument via JSON?
             var info = new VsDebugTargetInfo()
             {
                 //cbSize = (uint)Marshal.SizeOf(info),
                 dlo = DEBUG_LAUNCH_OPERATION.DLO_CreateProcess,
                 bstrExe = Path.Combine(outputDirectory, targetExe),
                 bstrCurDir = outputDirectory,
-                bstrArg = args, // no command line parameters
+                bstrArg = $"{args} {debugPort}", // no command line parameters
                 bstrRemoteMachine = null, // debug locally                
                 grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_StopDebuggingOnEnd, // When this process ends, debugging is stopped.
                 //grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_DetachOnStop, // Detaches instead of terminating when debugging stopped.

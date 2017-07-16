@@ -33,6 +33,7 @@ namespace Microsoft.MIDebugEngine
         private static readonly NLog.Logger logger = LogManager.GetCurrentClassLogger();
         private readonly AD7Engine _engine;
         private readonly IPAddress _ipAddress;
+        private readonly int _debugPort;
         private readonly List<AD7PendingBreakpoint> _pendingBreakpoints = new List<AD7PendingBreakpoint>();
         private readonly Dictionary<string, TypeSummary> _types = new Dictionary<string, TypeSummary>();
         private volatile bool _isRunning = true;
@@ -50,10 +51,11 @@ namespace Microsoft.MIDebugEngine
         private IDebugSession session;
         private AutoResetEvent _startVMEvent = new AutoResetEvent(false);
 
-        public DebuggedProcess(AD7Engine engine, IPAddress ipAddress, EngineCallback callback)
+        public DebuggedProcess(AD7Engine engine, IPAddress ipAddress, int debugPort, EngineCallback callback)
         {
             _engine = engine;
             _ipAddress = ipAddress;
+            _debugPort = debugPort;
             Instance = this;
 
             // we do NOT have real Win32 process IDs, so we use a guid
@@ -90,8 +92,8 @@ namespace Microsoft.MIDebugEngine
         {
             if (_vm != null)
                 return;
-
-            _vm = VirtualMachineManager.Connect(new IPEndPoint(_ipAddress, GlobalConfig.Current.DebuggerAgentPort));
+            
+            _vm = VirtualMachineManager.Connect(new IPEndPoint(_ipAddress, _debugPort));
             _vm.EnableEvents(
                 EventType.VMStart,
                 EventType.VMDeath,
