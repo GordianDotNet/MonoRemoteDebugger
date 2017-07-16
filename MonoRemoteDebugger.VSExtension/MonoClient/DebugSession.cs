@@ -43,6 +43,7 @@ namespace MonoRemoteDebugger.VSExtension.MonoClient
                 AppType = type,
                 DebugContent = File.ReadAllBytes(targetZip),
                 FileName = Client.TargetExe,
+                Arguments = Client.Arguments,
                 AppHash = Client.AppHash
             });
 
@@ -62,6 +63,7 @@ namespace MonoRemoteDebugger.VSExtension.MonoClient
                 AppType = type,
                 DebugContent = new byte[0],
                 FileName = Client.TargetExe,
+                Arguments = Client.Arguments,
                 AppHash = Client.AppHash                
             });
 

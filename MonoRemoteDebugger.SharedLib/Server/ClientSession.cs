@@ -19,7 +19,6 @@ namespace MonoRemoteDebugger.SharedLib.Server
         private Process proc;
 
         private string directoryName;
-        private string targetExe;
 
         public ClientSession(Socket socket)
         {
@@ -86,9 +85,7 @@ namespace MonoRemoteDebugger.SharedLib.Server
             {
                 Directory.CreateDirectory(tempContentDirectory);
             }
-
-            targetExe = msg.FileName;
-            
+                        
             directoryName = Path.Combine(tempContentDirectory, msg.AppHash);
 
             if (msg.DebugContent == null || msg.DebugContent.Length == 0)
@@ -129,14 +126,14 @@ namespace MonoRemoteDebugger.SharedLib.Server
                 generator.GeneratePdb2Mdb(binaryDirectory);
             }            
 
-            StartMono(msg.AppType);
+            StartMono(msg.AppType, msg.FileName, msg.Arguments);
 
             return true;
         }
 
-        private void StartMono(ApplicationType type)
+        private void StartMono(ApplicationType type, string targetExe, string arguments)
         {
-            MonoProcess proc = MonoProcess.Start(type, targetExe);
+            MonoProcess proc = MonoProcess.Start(type, targetExe, arguments);
             proc.ProcessStarted += MonoProcessStarted;
             this.proc = proc.Start(directoryName);
             this.proc.EnableRaisingEvents = true;

@@ -126,6 +126,13 @@ namespace MonoRemoteDebugger.VSExtension
             return assemblyPath;
         }
 
+        internal string GetStartArguments()
+        {
+            Project startupProject = GetStartupProject();
+            Configuration configuration = startupProject.ConfigurationManager.ActiveConfiguration;
+            return configuration.Properties.Item("StartArguments").Value?.ToString() ?? string.Empty;
+        }
+
 
         internal async Task AttachDebugger(string ipAddress, int timeout=10000)
         {
@@ -141,7 +148,9 @@ namespace MonoRemoteDebugger.VSExtension
             if (appType == ApplicationType.Webapplication)
                 outputDirectory += @"\..\..\";
 
-            var client = new DebugClient(appType, targetExe, outputDirectory, appHash);
+            var arguments = GetStartArguments();
+
+            var client = new DebugClient(appType, targetExe, arguments, outputDirectory, appHash);
             DebugSession session = await client.ConnectToServerAsync(ipAddress);
             var debugSessionStarted = await session.RestartDebuggingAsync(timeout);
 

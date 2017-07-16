@@ -45,10 +45,10 @@ namespace MonoRemoteDebugger.SharedLib.Server
             return adr;
         }
 
-        internal static MonoProcess Start(ApplicationType type, string _targetExe)
+        internal static MonoProcess Start(ApplicationType type, string _targetExe, string arguments)
         {
             if (type == ApplicationType.Desktopapplication)
-                return new MonoDesktopProcess(_targetExe);
+                return new MonoDesktopProcess(_targetExe, arguments);
             if (type == ApplicationType.Webapplication)
                 return new MonoWebProcess();
 

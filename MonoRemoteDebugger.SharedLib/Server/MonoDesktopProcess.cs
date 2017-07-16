@@ -6,10 +6,12 @@ namespace MonoRemoteDebugger.SharedLib.Server
     internal class MonoDesktopProcess : MonoProcess
     {
         private readonly string _targetExe;
+        private readonly string _arguments;
 
-        public MonoDesktopProcess(string targetExe)
+        public MonoDesktopProcess(string targetExe, string arguments)
         {
             _targetExe = targetExe;
+            _arguments = arguments;
         }
 
         internal override Process Start(string workingDirectory)
@@ -19,7 +21,7 @@ namespace MonoRemoteDebugger.SharedLib.Server
 
             string args = GetProcessArgs();
             ProcessStartInfo procInfo = GetProcessStartInfo(workingDirectory, monoBin);
-            procInfo.Arguments = args + " \"" + _targetExe + "\"";
+            procInfo.Arguments = $"{args} \"{_targetExe}\" {_arguments}";
 
             _proc = Process.Start(procInfo);
             RaiseProcessStarted();
