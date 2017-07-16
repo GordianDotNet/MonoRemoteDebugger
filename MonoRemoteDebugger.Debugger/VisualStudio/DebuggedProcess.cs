@@ -179,84 +179,92 @@ namespace Microsoft.MIDebugEngine
 
             logger.Trace($"HandleEventSet: {ev}");
             
-            switch (type)
+            try
             {
-                case EventType.AssemblyLoad:
-                    HandleAssemblyLoad((AssemblyLoadEvent)ev);
-                    break;
-                case EventType.UserBreak:
-                    if (!HandleUserBreak((UserBreakEvent)ev))
+                switch (type)
+                {
+                    case EventType.AssemblyLoad:
+                        HandleAssemblyLoad((AssemblyLoadEvent)ev);
+                        break;
+                    case EventType.UserBreak:
+                        if (!HandleUserBreak((UserBreakEvent)ev))
+                            return;
+                        break;
+                    case EventType.Breakpoint:
+                        if (!HandleBreakPoint((BreakpointEvent)ev))
+                            return;
+                        break;
+                    case EventType.Step:
+                        HandleStep((StepEvent)ev);
                         return;
-                    break;
-                case EventType.Breakpoint:
-                    if (!HandleBreakPoint((BreakpointEvent)ev))
+                    case EventType.TypeLoad:
+                        var typeEvent = (TypeLoadEvent)ev;
+                        RegisterType(typeEvent.Type);
+                        TryBindBreakpoints();
+                        break;
+                    case EventType.UserLog:
+                        UserLogEvent e = (UserLogEvent)ev;
+                        HostOutputWindowEx.WriteLaunchError(e.Message);
+                        break;
+                    case EventType.VMDeath:
+                    case EventType.VMDisconnect:
+                        Disconnect();
                         return;
-                    break;
-                case EventType.Step:
-                    HandleStep((StepEvent)ev);
-                    return;
-                case EventType.TypeLoad:
-                    var typeEvent = (TypeLoadEvent)ev;
-                    RegisterType(typeEvent.Type);
-                    TryBindBreakpoints();
-                    break;
-                case EventType.UserLog:
-                    UserLogEvent e = (UserLogEvent)ev;
-                    HostOutputWindowEx.WriteLaunchError(e.Message);
-                    break;
-                case EventType.VMDeath:
-                case EventType.VMDisconnect:
-                    Disconnect();
-                    return;
-                case EventType.VMStart:
-                case EventType.ThreadStart:                    
-                    var domain = ev.Thread.Domain.FriendlyName;
-                    var threadId = ev.Thread.ThreadId;
-                    var newThread = new AD7Thread(_engine, ev.Thread);
-                    if (_threads.TryAdd(threadId, newThread))
-                    {
-                        _engine.Callback.ThreadStarted(newThread);
-                    }
-                    else
-                    {
-                        logger.Error($"Thread {threadId} already added!");
-                    }                                 
-                    break;
-                case EventType.ThreadDeath:
-                    var oldThreadId = ev.Thread.ThreadId;
-                    AD7Thread oldThread = null;
-                    if (!_threads.TryRemove(oldThreadId, out oldThread))
-                    {
-                        _engine.Callback.ThreadDestroyed(oldThread, 0);
-                    }
-                    else
-                    {
-                        logger.Error($"Thread {oldThreadId} not found!");
-                    }
-                    break;
-                case EventType.Exception:
-                    var exEvent = ev as ExceptionEvent;
-                    var exceptionObjectMirror = exEvent.Exception;
-                    var filter = Guid.NewGuid();
-                    IEnumDebugPropertyInfo2 propInfo;
-                    var monoProperty = new MonoProperty(exEvent.Thread.GetFrames().FirstOrDefault(), exceptionObjectMirror);
-                    var propInfo1 = new DEBUG_PROPERTY_INFO[1];
-                    monoProperty.GetPropertyInfo(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, 10000, null, 0, propInfo1);
-                    monoProperty.EnumChildren(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, ref filter, enum_DBG_ATTRIB_FLAGS.DBG_ATTRIB_ACCESS_ALL, "", 10000, out propInfo);
-                    var sbException = new StringBuilder();
-                    var propInfoCast = propInfo as AD7PropertyEnum;
-                    foreach (var prop in propInfoCast.GetData())
-                    {
-                        sbException.AppendLine($"{prop.bstrName} = {prop.bstrValue}");
-                    }
-                    logger.Error($"Exception thrown: {sbException.ToString()}");
-                    HostOutputWindowEx.WriteLaunchError($"Exception thrown: {sbException.ToString()}");
-                    break;
-                default:
-                    logger.Trace(ev);
-                    break;
+                    case EventType.VMStart:
+                    case EventType.ThreadStart:
+                        var domain = ev.Thread.Domain.FriendlyName;
+                        var threadId = ev.Thread.ThreadId;
+                        var newThread = new AD7Thread(_engine, ev.Thread);
+                        if (_threads.TryAdd(threadId, newThread))
+                        {
+                            _engine.Callback.ThreadStarted(newThread);
+                        }
+                        else
+                        {
+                            logger.Error($"Thread {threadId} already added!");
+                        }
+                        break;
+                    case EventType.ThreadDeath:
+                        var oldThreadId = ev.Thread.ThreadId;
+                        AD7Thread oldThread = null;
+                        if (!_threads.TryRemove(oldThreadId, out oldThread))
+                        {
+                            _engine.Callback.ThreadDestroyed(oldThread, 0);
+                        }
+                        else
+                        {
+                            logger.Error($"Thread {oldThreadId} not found!");
+                        }
+                        break;
+                    case EventType.Exception:
+                        var exEvent = ev as ExceptionEvent;
+                        var exceptionObjectMirror = exEvent.Exception;
+                        // TODO Reading properties from complex exceptions throws an exception. Why?
+                        var filter = MonoProperty.EnumOnlyFieldsFilter;
+                        IEnumDebugPropertyInfo2 propInfo;
+                        var monoProperty = new MonoProperty(exEvent.Thread.GetFrames().FirstOrDefault(), exceptionObjectMirror);
+                        var propInfo1 = new DEBUG_PROPERTY_INFO[1];
+                        monoProperty.GetPropertyInfo(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, 10000, null, 0, propInfo1);
+                        monoProperty.EnumChildren(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, ref filter, enum_DBG_ATTRIB_FLAGS.DBG_ATTRIB_ACCESS_ALL, "", 10000, out propInfo);
+                        var sbException = new StringBuilder();
+                        var propInfoCast = propInfo as AD7PropertyEnum;
+                        foreach (var prop in propInfoCast.GetData())
+                        {
+                            sbException.AppendLine($"{prop.bstrName} = {prop.bstrValue}");
+                        }
+                        logger.Error($"Exception thrown: {sbException.ToString()}");
+                        HostOutputWindowEx.WriteLaunchError($"Exception thrown: {sbException.ToString()}");
+                        break;
+                    default:
+                        logger.Trace(ev);
+                        break;
+                }
             }
-
+            catch (Exception ex)
+            {
+                logger.Error(ex, $"Exception thrown in {nameof(HandleEventSet)}({ev})");
+            }
+            
             try
             {
                 if (type != EventType.VMStart)
