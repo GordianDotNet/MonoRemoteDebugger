@@ -82,24 +82,22 @@ namespace MonoRemoteDebugger.Debugger
         internal static void GetILOffset(AD7PendingBreakpoint bp, MethodMirror methodMirror, out int ilOffset)
         {
             List<Mono.Debugger.Soft.Location> locations = methodMirror.Locations.ToList();
-
+            ilOffset = -1;
             foreach (Mono.Debugger.Soft.Location location in locations)
             {
                 int line = location.LineNumber;
                 int column = location.ColumnNumber;
 
-                if (line != bp.StartLine + 1)
-                    continue;
-                //if (column != bp.StartColumn)
-                //    continue;
+                if (line > bp.StartLine + 1)
+                    break;
 
                 ilOffset = location.ILOffset;
-
-                Console.WriteLine(location.ColumnNumber);
-                return;
             }
 
-            throw new Exception("Cant bind breakpoint");
+            if (ilOffset < 0)
+            {
+                throw new Exception("Cant bind breakpoint");
+            }
         }
     }
 }
