@@ -168,7 +168,9 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                     SyntaxTree sourceTree = location.SourceTree;
                     SyntaxNode node = location.SourceTree.GetRoot().FindNode(location.SourceSpan, true, true);
 
-                    var method = GetParentMethod<MethodDeclarationSyntax>(node.Parent);
+                    // Find the method which contains the breakpoint 
+                    bool isAnonymousFunctionExpression = false;
+                    var method = GetParentNode<MethodDeclarationSyntax, AnonymousFunctionExpressionSyntax>(node.Parent, ref isAnonymousFunctionExpression);
 
                     if (method == null)
                     {
@@ -178,25 +180,22 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
 
                     string methodName = method.Identifier.Text;
 
-                    var cl = GetParentMethod<ClassDeclarationSyntax>(method);
+                    // Find the class which contains the method
+                    var cl = GetParentNode<ClassDeclarationSyntax>(method);
                     string className = cl.Identifier.Text;
 
-                    var ns = GetParentMethod<NamespaceDeclarationSyntax>(method);
+                    // Find the namespace which contains the class
+                    var ns = GetParentNode<NamespaceDeclarationSyntax>(method);
                     string nsname = ns.Name.ToString();
 
+                    // Find the loaded type with name "namespace.className"
                     string name = string.Format("{0}.{1}", nsname, className);
                     TypeSummary summary;
                     if (types.TryGetValue(name, out summary))
                     {
-                        MethodMirror methodMirror = summary.Methods.FirstOrDefault(x => x.Name == methodName);
-
-                        if (methodMirror != null)
+                        breakpointLocation = FindNearestBreakpointLocation(isAnonymousFunctionExpression, methodName, summary);
+                        if (breakpointLocation != null)
                         {
-                            breakpointLocation = new MonoBreakpointLocation
-                            {
-                                Method = methodMirror,
-                                Offset = 0,
-                            };
                             return true;
                         }
                     }
@@ -211,14 +210,100 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             return false;
         }
 
-        private T GetParentMethod<T>(SyntaxNode node) where T : SyntaxNode
+        private MonoBreakpointLocation FindNearestBreakpointLocation(bool isAnonymousFunctionExpression, string methodName, TypeSummary summary)
+        {
+            var tempBreakpointLocation = new MonoBreakpointLocation
+            {
+                LineDifference = int.MinValue,
+                Method = null,
+                IlOffset = -1,
+            };
+
+            int tempIlOffset = 0;
+            int tempLineDifference = 0;
+
+            if (isAnonymousFunctionExpression)
+            {
+                // TODO: Filter correct anonymous functions with Name?
+                foreach (var func in summary.AnonymousFunctions.Where(x => x.Key.Contains(methodName)))
+                {
+                    tempIlOffset = GetILOffset(this, func.Value, out tempLineDifference);
+                    if (tempBreakpointLocation.LineDifference < tempLineDifference)
+                    {
+                        tempBreakpointLocation.LineDifference = tempLineDifference;
+                        tempBreakpointLocation.IlOffset = tempIlOffset;
+                        tempBreakpointLocation.Method = func.Value;
+
+                        if (tempLineDifference == 0)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (tempBreakpointLocation.Method == null || tempBreakpointLocation.IlOffset < 0)
+            {
+                tempBreakpointLocation.Method = summary.Methods.FirstOrDefault(x => x.Name == methodName);
+                tempBreakpointLocation.IlOffset = GetILOffset(this, tempBreakpointLocation.Method, out tempLineDifference);
+            }
+
+            if (tempBreakpointLocation.Method != null && tempBreakpointLocation.IlOffset >= 0)
+            {
+                var breakpointLocation = tempBreakpointLocation;
+                return tempBreakpointLocation;
+            }
+
+            return null;
+        }
+
+        internal static int GetILOffset(AD7PendingBreakpoint bp, MethodMirror method, out int lineDifference)
+        {
+            List<Mono.Debugger.Soft.Location> locations = method.Locations.ToList();
+            var ilOffset = -1;
+            lineDifference = int.MinValue;
+            foreach (Mono.Debugger.Soft.Location location in locations)
+            {
+                int line = location.LineNumber;
+                int column = location.ColumnNumber;
+
+                var tempLineDifference = line - (bp.StartLine + 1);
+
+                if (tempLineDifference > 0)
+                    break;
+
+                lineDifference = tempLineDifference;
+                ilOffset = location.ILOffset;
+                if (tempLineDifference == 0)
+                {
+                    break;
+                }
+            }
+            
+            return ilOffset;
+        }
+
+        private T GetParentNode<T, P>(SyntaxNode node, ref bool anyChildIsFromTypeP) where T : SyntaxNode
+        {
+            if (node == null)
+                return null;
+
+            anyChildIsFromTypeP = anyChildIsFromTypeP || node is P;
+
+            if (node is T)
+                return node as T;
+
+            return GetParentNode<T, P>(node.Parent, ref anyChildIsFromTypeP);
+        }
+
+        private T GetParentNode<T>(SyntaxNode node) where T : SyntaxNode
         {
             if (node == null)
                 return null;
 
             if (node is T)
                 return node as T;
-            return GetParentMethod<T>(node.Parent);
+            return GetParentNode<T>(node.Parent);
         }
     }
 }

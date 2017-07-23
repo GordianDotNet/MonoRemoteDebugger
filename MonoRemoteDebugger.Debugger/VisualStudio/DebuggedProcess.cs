@@ -93,6 +93,8 @@ namespace Microsoft.MIDebugEngine
 
         internal void StartDebugging()
         {
+            DebugHelper.TraceEnteringMethod();
+
             if (_vm != null)
                 return;
 
@@ -173,10 +175,12 @@ namespace Microsoft.MIDebugEngine
 
         internal void Attach()
         {
+            DebugHelper.TraceEnteringMethod();
         }
 
         internal void StartVMEventHandling()
         {
+            DebugHelper.TraceEnteringMethod();
             _startVMEvent.Set();
         }
 
@@ -193,6 +197,7 @@ namespace Microsoft.MIDebugEngine
             {
                 try
                 {
+                    DebugHelper.TraceEnteringMethod();
                     EventSet set = _vm.GetNextEventSet();
 
                     var type = set.Events.First().EventType;
@@ -206,6 +211,10 @@ namespace Microsoft.MIDebugEngine
                 }
                 catch (VMNotSuspendedException)
                 {
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex);
                 }
             }
         }
@@ -347,6 +356,7 @@ namespace Microsoft.MIDebugEngine
 
         private void HandleStep(StepEvent stepEvent)
         {
+            DebugHelper.TraceEnteringMethod();
             if (currentStepRequest != null)
             {
                 currentStepRequest.Enabled = false;
@@ -361,6 +371,7 @@ namespace Microsoft.MIDebugEngine
 
         private bool HandleBreakPoint(BreakpointEvent ev)
         {
+            DebugHelper.TraceEnteringMethod();
             if (_isStepping)
                 return true;
 
@@ -381,6 +392,7 @@ namespace Microsoft.MIDebugEngine
         
         private bool HandleUserBreak(UserBreakEvent ev)
         {
+            DebugHelper.TraceEnteringMethod();
             if (_isStepping)
                 return true;
 
@@ -416,10 +428,7 @@ namespace Microsoft.MIDebugEngine
                     {
                         try
                         {
-                            int ilOffset;
-                            RoslynHelper.GetILOffset(bp, location.Method, out ilOffset);
-
-                            BreakpointEventRequest request = _vm.SetBreakpoint(location.Method, ilOffset);
+                            BreakpointEventRequest request = _vm.SetBreakpoint(location.Method, location.IlOffset);
                             request.Enable();
                             bp.Bound = true;
                             bp.LastRequest = request;
@@ -433,6 +442,10 @@ namespace Microsoft.MIDebugEngine
                             logger.Error("Cant bind breakpoint: " + ex);
                         }
                     }
+                    else
+                    {
+                        logger.Error($"Cant bind breakpoint: {bp.DocumentName}:{bp.StartLine}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -445,6 +458,7 @@ namespace Microsoft.MIDebugEngine
 
         private void Disconnect()
         {
+            DebugHelper.TraceEnteringMethod();
             _isRunning = false;
             Terminate();
             if (ApplicationClosed != null)
@@ -469,6 +483,7 @@ namespace Microsoft.MIDebugEngine
 
         public void Close()
         {
+            DebugHelper.TraceEnteringMethod();
             //if (_launchOptions.DeviceAppLauncher != null)
             //{
             //    _launchOptions.DeviceAppLauncher.Terminate();
@@ -478,10 +493,12 @@ namespace Microsoft.MIDebugEngine
 
         internal void WaitForAttach()
         {
+            DebugHelper.TraceEnteringMethod();
         }
 
         internal void Break()
         {
+            DebugHelper.TraceEnteringMethod();
             //TODO: techcap
             _vm.Suspend();
         }
@@ -492,6 +509,7 @@ namespace Microsoft.MIDebugEngine
         /// <param name="thread"></param>
         internal void Continue(AD7Thread thread)
         {
+            DebugHelper.TraceEnteringMethod();
             //_vm.Resume();
         }
 
@@ -506,6 +524,7 @@ namespace Microsoft.MIDebugEngine
         /// <param name="thread"></param>
         internal void Execute(AD7Thread thread)
         {
+            DebugHelper.TraceEnteringMethod();
             try
             {
                 ResumeVM();
@@ -520,6 +539,7 @@ namespace Microsoft.MIDebugEngine
 
         internal void Terminate()
         {
+            DebugHelper.TraceEnteringMethod();
             try
             {
                 if (_vm != null)
@@ -539,6 +559,7 @@ namespace Microsoft.MIDebugEngine
 
         public void Detach()
         {
+            DebugHelper.TraceEnteringMethod();
             Terminate();
         }
 
@@ -560,6 +581,7 @@ namespace Microsoft.MIDebugEngine
 
         internal void Step(AD7Thread thread, enum_STEPKIND sk, enum_STEPUNIT stepUnit)
         {
+            DebugHelper.TraceEnteringMethod();
             if (!_isStepping)
             {
                 if (currentStepRequest == null)
@@ -627,6 +649,7 @@ namespace Microsoft.MIDebugEngine
 
         private void ResumeVM()
         {
+            DebugHelper.TraceEnteringMethod();
             _engine.IsSuspended = false;
             _vm?.Resume();
         }

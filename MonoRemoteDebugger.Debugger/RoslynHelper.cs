@@ -78,26 +78,5 @@ namespace MonoRemoteDebugger.Debugger
                 new TEXT_POSITION() { dwLine = (uint)mapped.EndLinePosition.Line, dwColumn = (uint)mapped.EndLinePosition.Character - 1 },
                 new TEXT_POSITION() { dwLine = (uint)mapped.EndLinePosition.Line, dwColumn = (uint)mapped.EndLinePosition.Character });
         }
-
-        internal static void GetILOffset(AD7PendingBreakpoint bp, MethodMirror methodMirror, out int ilOffset)
-        {
-            List<Mono.Debugger.Soft.Location> locations = methodMirror.Locations.ToList();
-            ilOffset = -1;
-            foreach (Mono.Debugger.Soft.Location location in locations)
-            {
-                int line = location.LineNumber;
-                int column = location.ColumnNumber;
-
-                if (line > bp.StartLine + 1)
-                    break;
-
-                ilOffset = location.ILOffset;
-            }
-
-            if (ilOffset < 0)
-            {
-                throw new Exception("Cant bind breakpoint");
-            }
-        }
     }
 }
