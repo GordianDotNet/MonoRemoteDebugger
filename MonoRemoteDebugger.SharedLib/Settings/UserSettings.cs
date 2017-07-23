@@ -1,6 +1,6 @@
-﻿using MonoRemoteDebugger.SharedLib;
+﻿using Newtonsoft.Json;
 
-namespace MonoRemoteDebugger.VSExtension.Settings
+namespace MonoRemoteDebugger.SharedLib.Settings
 {
     public class UserSettings
     {
@@ -15,7 +15,20 @@ namespace MonoRemoteDebugger.VSExtension.Settings
             SSHPassword = string.Empty;
             SSHDeployPath = "./MonoDebugTemp/";
             SSHMonoDebugPort = GlobalConfig.Current.DebuggerAgentPort;
-            SSHPdb2mbdCommand = "pdb2mdb";
+            SSHPdb2mdbCommand = "pdb2mdb";
+            SSHDebugConnectionTimeout = 20;
+        }
+
+        public string SerializeToJson()
+        {
+            string json = JsonConvert.SerializeObject(this);
+            return json;
+        }
+
+        public static UserSettings DeserializeFromJson(string json)
+        {
+            var result = JsonConvert.DeserializeObject<UserSettings>(json);
+            return result;
         }
 
         public string LastIp { get; set; }
@@ -27,6 +40,7 @@ namespace MonoRemoteDebugger.VSExtension.Settings
         public string SSHPassword { get; set; }
         public string SSHDeployPath { get; set; }
         public int SSHMonoDebugPort { get; set; }
-        public string SSHPdb2mbdCommand { get; set; }
+        public string SSHPdb2mdbCommand { get; set; }
+        public int SSHDebugConnectionTimeout { get; set; }
     }
 }

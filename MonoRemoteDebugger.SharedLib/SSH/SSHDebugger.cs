@@ -4,50 +4,54 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using MonoRemoteDebugger.SharedLib.Settings;
 using SshFileSync;
 
 namespace MonoRemoteDebugger.SharedLib.SSH
 {
     public class SSHDebugger
     {
-        public static async Task<bool> DeployAndDebug(SshDeltaCopy.Options options, string pdb2mbdCommand, int monoDebugPort, string targetExePath, string arguments)
+        public static async Task<string> DeployAndDebugAsync(SshDeltaCopy.Options options, DebugOptions debugOptions)
         {
-            return await StartDebuggerAsync(options, true, true, pdb2mbdCommand, monoDebugPort, targetExePath, arguments);
+            return await StartDebuggerAsync(options, debugOptions, true, true);
         }
         
-        public static async Task<bool> Deploy(SshDeltaCopy.Options options, string pdb2mbdCommand)
+        public static async Task<string> DeployAsync(SshDeltaCopy.Options options, DebugOptions debugOptions)
         {
-            return await StartDebuggerAsync(options, true, false, pdb2mbdCommand, monoDebugPort: 0, targetExePath: string.Empty, arguments: string.Empty);
+            return await StartDebuggerAsync(options, debugOptions, true, false);
         }
         
-        public static async Task<bool> DebugAsync(SshDeltaCopy.Options options, string pdb2mbdCommand, int monoDebugPort, string targetExePath, string arguments)
+        public static async Task<string> DebugAsync(SshDeltaCopy.Options options, DebugOptions debugOptions)
         {
-            return await StartDebuggerAsync(options, false, true, pdb2mbdCommand, monoDebugPort, targetExePath, arguments);
+            return await StartDebuggerAsync(options, debugOptions, false, true);
         }
 
-        private static async Task<bool> StartDebuggerAsync(SshDeltaCopy.Options options, bool deploy, bool debug, string pdb2mbdCommand, int monoDebugPort, string targetExePath, string arguments)
+        private static async Task<string> StartDebuggerAsync(SshDeltaCopy.Options options, DebugOptions debugOptions, bool deploy, bool debug)
         {
+            var sb = new StringBuilder();
+
             using (SshDeltaCopy sshDeltaCopy = new SshDeltaCopy(options))
             {
                 if (deploy)
                 {
                     sshDeltaCopy.DeployDirectory(options.SourceDirectory, options.DestinationDirectory);
+                    var createMdbCommand = sshDeltaCopy.RunSSHCommand($@"find . -regex '.*\(exe\|dll\)' -exec {debugOptions.UserSettings.SSHPdb2mdbCommand} {{}} \;", false);
+                    sb.AppendLine(createMdbCommand.Result);
                 }
-
-                sshDeltaCopy.RunSSHCommand($@"find . -regex '.*\(exe\| dll\)' -exec {pdb2mbdCommand} {{}} \;", false);
-
+                
                 if (debug)
                 {
-                    var killCommand = $"kill $(ps w | grep '[m]ono --debugger-agent=address' | awk '{{print $1}}')";
-                    sshDeltaCopy.RunSSHCommand(killCommand, false);
+                    var killCommandText = $"kill $(lsof -i | grep 'mono' | grep '\\*:{debugOptions.UserSettings.SSHMonoDebugPort}' | awk '{{print $2}}')";//$"kill $(ps w | grep '[m]ono --debugger-agent=address' | awk '{{print $1}}')";
+                    var killCommand = sshDeltaCopy.RunSSHCommand(killCommandText, false);
+                    sb.AppendLine(killCommand.Result);
 
-                    var monoDebugCommand = $"mono --debugger-agent=address={IPAddress.Any}:{monoDebugPort},transport=dt_socket,server=y --debug=mdb-optimizations {targetExePath} {arguments} &";
+                    var monoDebugCommand = $"mono --debugger-agent=address={IPAddress.Any}:{debugOptions.UserSettings.SSHMonoDebugPort},transport=dt_socket,server=y --debug=mdb-optimizations {debugOptions.TargetExeFileName} {debugOptions.StartArguments} &";
                     var cmd = sshDeltaCopy.CreateSSHCommand(monoDebugCommand);
-                    return await Task.Factory.FromAsync<bool>(cmd.BeginExecute(), result => cmd.ExitStatus == 0);
+                    return await Task.Factory.FromAsync(cmd.BeginExecute(), result => cmd.Result);
                 }
             }
 
-            return true;
+            return sb.ToString();
         }
     }
 }

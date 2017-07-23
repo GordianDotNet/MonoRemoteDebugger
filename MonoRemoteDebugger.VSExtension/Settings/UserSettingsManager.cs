@@ -1,6 +1,6 @@
 ﻿using System;
 using Microsoft.VisualStudio.Settings;
-using Newtonsoft.Json;
+using MonoRemoteDebugger.SharedLib.Settings;
 using NLog;
 
 namespace MonoRemoteDebugger.VSExtension.Settings
@@ -29,7 +29,7 @@ namespace MonoRemoteDebugger.VSExtension.Settings
                 try
                 {
                     string content = store.GetString("MonoRemoteDebugger", "Settings");
-                    result = JsonConvert.DeserializeObject<UserSettings>(content);
+                    result = UserSettings.DeserializeFromJson(content);
                     return result;
                 }
                 catch (Exception ex)
@@ -43,7 +43,7 @@ namespace MonoRemoteDebugger.VSExtension.Settings
 
         public void Save(UserSettings settings)
         {
-            string json = JsonConvert.SerializeObject(settings);
+            string json = settings.SerializeToJson();
             if (!store.CollectionExists("MonoRemoteDebugger"))
                 store.CreateCollection("MonoRemoteDebugger");
             store.SetString("MonoRemoteDebugger", "Settings", json);

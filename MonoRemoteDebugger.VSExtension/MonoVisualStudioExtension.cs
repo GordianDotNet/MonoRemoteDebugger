@@ -16,6 +16,7 @@ using Task = System.Threading.Tasks.Task;
 using Microsoft.MIDebugEngine;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using MonoRemoteDebugger.SharedLib.Settings;
 
 namespace MonoRemoteDebugger.VSExtension
 {
@@ -132,35 +133,29 @@ namespace MonoRemoteDebugger.VSExtension
             Configuration configuration = startupProject.ConfigurationManager.ActiveConfiguration;
             return configuration.Properties.Item("StartArguments").Value?.ToString() ?? string.Empty;
         }
-
-
-        internal async Task AttachDebugger(string ipAddress, int timeout=10000)
+        
+        internal async Task AttachDebugger(DebugOptions debugOptions)
         {
-            string path = GetStartupAssemblyPath();
-            string targetExe = Path.GetFileName(path);
-            string outputDirectory = Path.GetDirectoryName(path);
-            string appHash = ComputeHash(path);
+            string appHash = ComputeHash(debugOptions.StartupAssemblyPath);
 
             Project startup = GetStartupProject();
 
             bool isWeb = ((object[]) startup.ExtenderNames).Any(x => x.ToString() == "WebApplication");
             ApplicationType appType = isWeb ? ApplicationType.Webapplication : ApplicationType.Desktopapplication;
             if (appType == ApplicationType.Webapplication)
-                outputDirectory += @"\..\..\";
-
-            var arguments = GetStartArguments();
-
-            var client = new DebugClient(appType, targetExe, arguments, outputDirectory, appHash);
-            DebugSession session = await client.ConnectToServerAsync(ipAddress);
-            var debugSessionStarted = await session.RestartDebuggingAsync(timeout);
+                debugOptions.OutputDirectory += @"\..\..\";
+            
+            var client = new DebugClient(appType, debugOptions.TargetExeFileName, debugOptions.StartArguments, debugOptions.OutputDirectory, appHash);
+            DebugSession session = await client.ConnectToServerAsync(debugOptions.UserSettings.LastIp);
+            var debugSessionStarted = await session.RestartDebuggingAsync(debugOptions.UserSettings.LastTimeout);
 
             if (!debugSessionStarted)
             {
                 await session.TransferFilesAsync();
-                await session.WaitForAnswerAsync(timeout);
+                await session.WaitForAnswerAsync(debugOptions.UserSettings.LastTimeout);
             }
 
-            IntPtr pInfo = GetDebugInfo(ipAddress, GlobalConfig.Current.DebuggerAgentPort, targetExe, outputDirectory);
+            IntPtr pInfo = GetDebugInfo(debugOptions);
             var sp = new ServiceProvider((IServiceProvider) _dte);
             try
             {
@@ -190,13 +185,9 @@ namespace MonoRemoteDebugger.VSExtension
             }
         }
 
-        internal void AttachDebuggerToRunningProcess(string ipAddress, int debugPort)
+        internal void AttachDebuggerToRunningProcess(DebugOptions debugOptions)
         {
-            string path = GetStartupAssemblyPath();
-            string targetExe = Path.GetFileName(path);
-            string outputDirectory = Path.GetDirectoryName(path);
-
-            IntPtr pInfo = GetDebugInfo(ipAddress, debugPort, targetExe, outputDirectory);
+            IntPtr pInfo = GetDebugInfo(debugOptions);
             var sp = new ServiceProvider((IServiceProvider)_dte);
             try
             {
@@ -234,23 +225,22 @@ namespace MonoRemoteDebugger.VSExtension
             }
         }
 
-        private IntPtr GetDebugInfo(string args, int debugPort, string targetExe, string outputDirectory)
+        private IntPtr GetDebugInfo(DebugOptions debugOptions)//string args, int debugPort, string targetExe, string outputDirectory)
         {
-            // TODO argument via JSON?
             var info = new VsDebugTargetInfo()
             {
                 //cbSize = (uint)Marshal.SizeOf(info),
                 dlo = DEBUG_LAUNCH_OPERATION.DLO_CreateProcess,
-                bstrExe = Path.Combine(outputDirectory, targetExe),
-                bstrCurDir = outputDirectory,
-                bstrArg = $"{args} {debugPort}", // no command line parameters
+                bstrExe = debugOptions.StartupAssemblyPath,
+                bstrCurDir = debugOptions.OutputDirectory,
+                bstrArg = debugOptions.StartArguments,
                 bstrRemoteMachine = null, // debug locally                
                 grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_StopDebuggingOnEnd, // When this process ends, debugging is stopped.
                 //grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_DetachOnStop, // Detaches instead of terminating when debugging stopped.
                 fSendStdoutToOutputWindow = 0,
                 clsidCustom = AD7Guids.EngineGuid,
                 //bstrEnv = "",
-                bstrOptions = "" // add debug engine options
+                bstrOptions = debugOptions.SerializeToJson() // add debug engine options
             };
 
             info.cbSize = (uint)Marshal.SizeOf(info);
@@ -258,6 +248,26 @@ namespace MonoRemoteDebugger.VSExtension
             IntPtr pInfo = Marshal.AllocCoTaskMem((int) info.cbSize);
             Marshal.StructureToPtr(info, pInfo, false);
             return pInfo;
+        }
+
+        public DebugOptions CreateDebugOptions(UserSettings settings, bool useSSH = false)
+        {
+            var startupAssemblyPath = GetStartupAssemblyPath();
+            var targetExeFileName = Path.GetFileName(startupAssemblyPath);
+            var outputDirectory = Path.GetDirectoryName(startupAssemblyPath);
+            var startArguments = GetStartArguments();
+
+            var debugOptions = new DebugOptions()
+            {
+                UseSSH = useSSH,
+                StartupAssemblyPath = startupAssemblyPath,
+                UserSettings = settings,
+                OutputDirectory = outputDirectory,
+                TargetExeFileName = targetExeFileName,
+                StartArguments = startArguments
+            };
+
+            return debugOptions;
         }
     }
 }

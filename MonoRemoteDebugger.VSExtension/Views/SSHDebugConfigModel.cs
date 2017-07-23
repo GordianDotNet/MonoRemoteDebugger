@@ -10,6 +10,7 @@ using System.Windows;
 using MonoRemoteDebugger.SharedLib;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using MonoRemoteDebugger.SharedLib.Settings;
 
 namespace MonoRemoteDebugger.VSExtension.Views
 {
@@ -32,7 +33,8 @@ namespace MonoRemoteDebugger.VSExtension.Views
             settings.SSHPort = SSHPort;
             settings.SSHDeployPath = SSHDeployPath;
             settings.SSHMonoDebugPort = SSHMonoDebugPort;
-            settings.SSHPdb2mbdCommand = SSHPdb2mbdCommand;
+            settings.SSHPdb2mdbCommand = SSHPdb2mdbCommand;
+            settings.SSHDebugConnectionTimeout = SSHDebugConnectionTimeout;
             UserSettingsManager.Instance.Save(settings);
         }
 
@@ -113,15 +115,27 @@ namespace MonoRemoteDebugger.VSExtension.Views
                 NotifyPropertyChanged();
             }
         }
-        public string SSHPdb2mbdCommand
+        public string SSHPdb2mdbCommand
         {
             get
             {
-                return _settings.SSHPdb2mbdCommand;
+                return _settings.SSHPdb2mdbCommand;
             }
             set
             {
-                _settings.SSHPdb2mbdCommand = value;
+                _settings.SSHPdb2mdbCommand = value;
+                NotifyPropertyChanged();
+            }
+        }
+        public int SSHDebugConnectionTimeout
+        {
+            get
+            {
+                return _settings.SSHDebugConnectionTimeout;
+            }
+            set
+            {
+                _settings.SSHDebugConnectionTimeout = value;
                 NotifyPropertyChanged();
             }
         }

@@ -5,6 +5,7 @@ using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Debugger.Interop;
 using Microsoft.MIDebugEngine;
 using MonoRemoteDebugger.SharedLib;
+using MonoRemoteDebugger.SharedLib.Settings;
 
 namespace MonoRemoteDebugger.Debugger.VisualStudio
 {
@@ -140,20 +141,10 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
 
             Callback = new EngineCallback(this, ad7Callback);
 
-            // TODO refactoring required
-            var arguments = args.Split(' ');
-            var hostIp = (arguments.Length > 0) ? IPAddress.Parse(arguments[0]) : IPAddress.Loopback;
-            int debugPort;
-            if (arguments.Length > 1 && int.TryParse(arguments[1], out debugPort))
-            {                
-            }
-            else
-            {
-                debugPort = GlobalConfig.Current.DebuggerAgentPort;
-            }
-            HostName = hostIp.ToString();
+            var debugOptions = DebugOptions.DeserializeFromJson(options);
+            HostName = debugOptions.GetHostIP().ToString();
             ProgramName = exe;
-            DebuggedProcess = new DebuggedProcess(this, hostIp, debugPort, Callback);
+            DebuggedProcess = new DebuggedProcess(this, debugOptions, Callback);
             DebuggedProcess.ApplicationClosed += OnApplicationClosed;
             DebuggedProcess.StartDebugging();
 

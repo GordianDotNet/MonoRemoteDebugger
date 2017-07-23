@@ -4,25 +4,25 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using EnvDTE;
 using EnvDTE80;
+using Microsoft.MIDebugEngine;
 using Microsoft.VisualStudio.Settings;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Shell.Settings;
 using Microsoft.Win32;
+using MonoRemoteDebugger.Debugger.DebugEngineHost;
 using MonoRemoteDebugger.SharedLib;
 using MonoRemoteDebugger.SharedLib.Server;
-using MonoRemoteDebugger.Debugger;
+using MonoRemoteDebugger.SharedLib.SSH;
 using MonoRemoteDebugger.VSExtension.Settings;
 using MonoRemoteDebugger.VSExtension.Views;
 using NLog;
-using Process = System.Diagnostics.Process;
-using Microsoft.MIDebugEngine;
-using System.Threading.Tasks;
 using SshFileSync;
-using MonoRemoteDebugger.SharedLib.SSH;
+using Process = System.Diagnostics.Process;
 
 namespace MonoRemoteDebugger.VSExtension
 {
@@ -55,6 +55,9 @@ namespace MonoRemoteDebugger.VSExtension
 
             var mcs = GetService(typeof(IMenuCommandService)) as OleMenuCommandService;
             InstallMenu(mcs);
+
+            // Workaround: Don't show Visual Studio WPF DataBinding errors in Output window
+            System.Diagnostics.PresentationTraceSources.DataBindingSource.Switch.Level = System.Diagnostics.SourceLevels.Critical;
         }
 
         private void TryRegisterAssembly()
@@ -151,7 +154,9 @@ namespace MonoRemoteDebugger.VSExtension
                 var sb = (SolutionBuild2)dte.Solution.SolutionBuild;
                 menuCommand.Visible = sb.StartupProjects != null;
                 if (menuCommand.Visible)
+                {
                     menuCommand.Enabled = ((Array)sb.StartupProjects).Cast<string>().Count() == 1;
+                }
             }
         }
 
@@ -164,8 +169,6 @@ namespace MonoRemoteDebugger.VSExtension
         {
             try
             {
-                System.Diagnostics.PresentationTraceSources.DataBindingSource.Switch.Level = System.Diagnostics.SourceLevels.Critical;
-
                 if (server != null)
                 {
                     server.Stop();
@@ -177,7 +180,10 @@ namespace MonoRemoteDebugger.VSExtension
                 using (server = new MonoDebugServer())
                 {
                     server.Start();
-                    await monoExtension.AttachDebugger(MonoProcess.GetLocalIp().ToString());
+                    var settings = UserSettingsManager.Instance.Load();
+                    var debugOptions = this.monoExtension.CreateDebugOptions(settings);
+                    debugOptions.UserSettings.LastIp = MonoProcess.GetLocalIp().ToString();
+                    await monoExtension.AttachDebugger(debugOptions);
                 }
             }
             catch (Exception ex)
@@ -204,12 +210,18 @@ namespace MonoRemoteDebugger.VSExtension
                 {
                     BuildSolution();
 
-                    int timeout = dlg.ViewModel.AwaitTimeout;
-                    
+                    var settings = UserSettingsManager.Instance.Load();
+                    var debugOptions = this.monoExtension.CreateDebugOptions(settings);
+
                     if (dlg.ViewModel.SelectedServer != null)
-                        await monoExtension.AttachDebugger(dlg.ViewModel.SelectedServer.IpAddress.ToString(), timeout);
+                    {
+                        debugOptions.UserSettings.LastIp = dlg.ViewModel.SelectedServer.IpAddress.ToString();
+                        await monoExtension.AttachDebugger(debugOptions);
+                    }
                     else if (!string.IsNullOrWhiteSpace(dlg.ViewModel.ManualIp))
-                        await monoExtension.AttachDebugger(dlg.ViewModel.ManualIp, timeout);
+                    {
+                        await monoExtension.AttachDebugger(debugOptions);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -274,44 +286,59 @@ namespace MonoRemoteDebugger.VSExtension
                     }
                 });
 
-                string startupAssemblyPath = monoExtension.GetStartupAssemblyPath();
-                string targetExeFileName = Path.GetFileName(startupAssemblyPath);
-                string outputDirectory = Path.GetDirectoryName(startupAssemblyPath);
-
+                var debugOptions = monoExtension.CreateDebugOptions(settings, true);
+                
                 var options = new SshDeltaCopy.Options()
                 {
                     Host = settings.SSHHostIP,
                     Port = settings.SSHPort,
                     Username = settings.SSHUsername,
                     Password = settings.SSHPassword,
-                    SourceDirectory = outputDirectory,
+                    SourceDirectory = debugOptions.OutputDirectory,
                     DestinationDirectory = settings.SSHDeployPath,
                     RemoveOldFiles = true,
                     PrintTimings = true,
                     RemoveTempDeleteListFile = true,
                 };
 
+                Task<string> asyncTask;
                 if (startDebugger)
                 {
-                    var arguments = monoExtension.GetStartArguments();
-
                     if (deploy)
                     {
-                        var asyncTask = SSHDebugger.DeployAndDebug(options, settings.SSHPdb2mbdCommand, settings.SSHMonoDebugPort, targetExeFileName, arguments);
+                        asyncTask = SSHDebugger.DeployAndDebugAsync(options, debugOptions);
                     }
                     else
                     {
-                        var asyncTask = SSHDebugger.DebugAsync(options, settings.SSHPdb2mbdCommand, settings.SSHMonoDebugPort, targetExeFileName, arguments);
+                        asyncTask = SSHDebugger.DebugAsync(options, debugOptions);
                     }
                 }
                 else
                 {
-                    var asyncTask = SSHDebugger.Deploy(options, settings.SSHPdb2mbdCommand);
+                    asyncTask = SSHDebugger.DeployAsync(options, debugOptions);
                 }
 
                 if (startDebugger)
                 {
-                    monoExtension.AttachDebuggerToRunningProcess(settings.SSHHostIP, settings.SSHMonoDebugPort);
+                    monoExtension.AttachDebuggerToRunningProcess(debugOptions);
+                }
+
+                var result = await asyncTask;
+
+                if (string.IsNullOrWhiteSpace(result))
+                {
+                    if (deploy)
+                    {
+                        HostOutputWindowEx.WriteLaunchError("Deploying successfully.");
+                    }
+                    if (startDebugger)
+                    {
+                        HostOutputWindowEx.WriteLaunchError("Debugging successfully.");
+                    }
+                }
+                else
+                {
+                    HostOutputWindowEx.WriteLaunchError(result);
                 }
 
                 return true;

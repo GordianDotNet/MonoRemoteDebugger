@@ -6,11 +6,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
 
 namespace MonoRemoteDebugger.Debugger.DebugEngineHost
 {
     public static class HostOutputWindowEx
     {
+        public static VSErrorTextWriter LogInstance { get; internal set; } = new VSErrorTextWriter();
+
         // Use an extra class so that we have a seperate class which depends on VS interfaces
         private static class VsImpl
         {
@@ -31,6 +34,7 @@ namespace MonoRemoteDebugger.Debugger.DebugEngineHost
                 }
 
                 hr = pane.OutputString(outputMessage);
+                pane.Activate(); // Brings this pane into view
             }
         }
 
@@ -47,6 +51,24 @@ namespace MonoRemoteDebugger.Debugger.DebugEngineHost
             catch (Exception)
             {
             }
+        }
+    }
+
+    public class VSErrorTextWriter : TextWriter
+    {
+        public override void WriteLine(string value)
+        {
+            HostOutputWindowEx.WriteLaunchError(value + Environment.NewLine);
+        }
+
+        public override void Write(char value)
+        {
+            HostOutputWindowEx.WriteLaunchError(value.ToString());
+        }
+
+        public override Encoding Encoding
+        {
+            get { return Encoding.UTF8; }
         }
     }
 }

@@ -17,6 +17,7 @@ using System.Diagnostics;
 using MonoRemoteDebugger.SharedLib;
 using System.Collections.Concurrent;
 using System.Text;
+using MonoRemoteDebugger.SharedLib.Settings;
 
 namespace Microsoft.MIDebugEngine
 {
@@ -48,14 +49,16 @@ namespace Microsoft.MIDebugEngine
 
         private StepEventRequest currentStepRequest;
         private bool _isStepping;
-        private IDebugSession session;
+        private IDebugSession _session;
         private AutoResetEvent _startVMEvent = new AutoResetEvent(false);
+        private DebugOptions _debugOptions;
 
-        public DebuggedProcess(AD7Engine engine, IPAddress ipAddress, int debugPort, EngineCallback callback)
+        public DebuggedProcess(AD7Engine engine, DebugOptions debugOptions, EngineCallback callback)
         {
             _engine = engine;
-            _ipAddress = ipAddress;
-            _debugPort = debugPort;
+            _debugOptions = debugOptions;
+            _ipAddress = debugOptions.GetHostIP();
+            _debugPort = debugOptions.GetMonoDebugPort();
             Instance = this;
 
             // we do NOT have real Win32 process IDs, so we use a guid
@@ -92,45 +95,80 @@ namespace Microsoft.MIDebugEngine
         {
             if (_vm != null)
                 return;
-            
-            _vm = VirtualMachineManager.Connect(new IPEndPoint(_ipAddress, _debugPort));
-            _vm.EnableEvents(
-                EventType.VMStart,
-                EventType.VMDeath,
-                EventType.ThreadStart,
-                EventType.ThreadDeath,
-                EventType.AppDomainCreate,
-                EventType.AppDomainUnload,
-                //MethodEntry,
-                //MethodExit,
-                EventType.AssemblyLoad,
-                EventType.AssemblyUnload,
-                //Breakpoint,
-                //Step,
-                EventType.TypeLoad,
-                EventType.Exception,
-                EventType.KeepAlive,
-                EventType.UserBreak,                
-                EventType.UserLog,
-                EventType.VMDisconnect
-                );
 
-            EventSet set = _vm.GetNextEventSet();
-            if (set.Events.OfType<VMStartEvent>().Any())
+            try
             {
-                foreach (Event ev in set.Events)
+                BeginConnect();
+
+                _vm.EnableEvents(
+                    EventType.VMStart,
+                    EventType.VMDeath,
+                    EventType.ThreadStart,
+                    EventType.ThreadDeath,
+                    EventType.AppDomainCreate,
+                    EventType.AppDomainUnload,
+                    //MethodEntry,
+                    //MethodExit,
+                    EventType.AssemblyLoad,
+                    EventType.AssemblyUnload,
+                    //Breakpoint,
+                    //Step,
+                    EventType.TypeLoad,
+                    EventType.Exception,
+                    EventType.KeepAlive,
+                    EventType.UserBreak,
+                    EventType.UserLog,
+                    EventType.VMDisconnect
+                    );
+
+                EventSet set = _vm.GetNextEventSet();
+                if (set.Events.OfType<VMStartEvent>().Any())
                 {
-                    HandleEventSet(ev);
+                    foreach (Event ev in set.Events)
+                    {
+                        HandleEventSet(ev);
+                    }
+
+                    _startVMEvent.Reset();
+
+                    Task.Factory.StartNew(ReceiveThread, TaskCreationOptions.LongRunning);
                 }
-
-                _startVMEvent.Reset();
-
-                Task.Factory.StartNew(ReceiveThread, TaskCreationOptions.LongRunning);
+                else
+                {
+                    throw new Exception("Didnt get VMStart-Event!");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                throw new Exception("Didnt get VMStart-Event!");
+                HostOutputWindowEx.LogInstance.WriteLine(ex.Message);
+                throw;
             }
+        }
+
+        private void BeginConnect()
+        {
+            var timeout = TimeSpan.FromSeconds(_debugOptions.UserSettings.SSHDebugConnectionTimeout);
+            var asyncResult = VirtualMachineManager.BeginConnect(new IPEndPoint(_ipAddress, _debugPort), ar => { }/*, HostOutputWindowEx.LogInstance*/);
+            var vmTask = Task.Factory.FromAsync(asyncResult, ar => EndConnect(ar));
+
+            var timeoutResult = Task.WaitAny(new Task[] { vmTask }, timeout);
+            if (timeoutResult != 0)
+            {
+                VirtualMachineManager.CancelConnection(asyncResult);
+                throw new Exception($"Error: VirtualMachineManager couldn't connect to {_ipAddress}:{_debugPort} within {timeout.TotalSeconds} seconds.");
+            }
+
+            _vm = vmTask.Result;
+            if (_vm == null)
+            {
+                throw new Exception($"Error: VirtualMachineManager couldn't connect to {_ipAddress}:{_debugPort}. Result was null!");
+            }
+        }
+
+        private VirtualMachine EndConnect(IAsyncResult ar)
+        {
+            _vm = VirtualMachineManager.EndConnect(ar);
+            return _vm;
         }
 
         internal void Attach()
@@ -247,10 +285,14 @@ namespace Microsoft.MIDebugEngine
                         monoProperty.GetPropertyInfo(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, 10000, null, 0, propInfo1);
                         monoProperty.EnumChildren(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, ref filter, enum_DBG_ATTRIB_FLAGS.DBG_ATTRIB_ACCESS_ALL, "", 10000, out propInfo);
                         var sbException = new StringBuilder();
+                        sbException.AppendLine($"Excption thrown: {exceptionObjectMirror.Type.FullName}");
                         var propInfoCast = propInfo as AD7PropertyEnum;
                         foreach (var prop in propInfoCast.GetData())
                         {
-                            sbException.AppendLine($"{prop.bstrName} = {prop.bstrValue}");
+                            if (prop.bstrName.StartsWith("_message") || prop.bstrName.StartsWith("_innerException"))
+                            {
+                                sbException.AppendLine($"{prop.bstrName} = {prop.bstrValue}");
+                            }
                         }
                         logger.Error($"Exception thrown: {sbException.ToString()}");
                         HostOutputWindowEx.WriteLaunchError($"Exception thrown: {sbException.ToString()}");
@@ -482,12 +524,13 @@ namespace Microsoft.MIDebugEngine
             {
                 if (_vm != null)
                 {
+                    _vm.Exit(0);
                     _vm.ForceDisconnect();
                     _vm = null;
                 }
 
 
-                session.Disconnect();
+                _session.Disconnect();
             }
             catch
             {
@@ -560,7 +603,7 @@ namespace Microsoft.MIDebugEngine
 
         public void AssociateDebugSession(IDebugSession session)
         {
-            this.session = session;
+            this._session = session;
         }
 
         //{bhlee

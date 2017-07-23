@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Net.Sockets;
 using System.Windows;
 using MonoRemoteDebugger.SharedLib;
+using MonoRemoteDebugger.SharedLib.Settings;
 
 namespace MonoRemoteDebugger.VSExtension.Views
 {
