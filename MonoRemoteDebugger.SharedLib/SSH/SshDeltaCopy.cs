@@ -1,5 +1,5 @@
 ﻿/* 
-20170716: Version 1.3.0
+20171022: Version 1.4.0
 
 MIT License
 
@@ -73,7 +73,7 @@ namespace SshFileSync
                     return $"{Host}#{Port}#{Username}";
                 }
             }
-
+            
             public Options()
             { }
 
@@ -168,6 +168,8 @@ namespace SshFileSync
         private long _lastElapsedMilliseconds;
         private bool _isConnected;
 
+        public Action<string> LogOutput { get; set; } = Console.WriteLine;
+
         public static bool RunBatchfile(string batchFileName)
         {
             if (!File.Exists(batchFileName))
@@ -204,7 +206,7 @@ namespace SshFileSync
                 }
                 catch (Exception ex)
                 {
-                    PrintError(ex);
+                    Console.WriteLine($"Exception: {ex.Message}\n{ex.StackTrace}");
                 }
             }
 
@@ -297,6 +299,7 @@ namespace SshFileSync
         {
             if (_isConnected)
             {
+                ChangeWorkingDirectory(workingDirectory);
                 return;
             }
 
@@ -487,6 +490,10 @@ namespace SshFileSync
                                 {
                                     tarGzWriter.Write(file.Key, file.Value);
                                 }
+                                catch (IOException ioEx)
+                                {
+                                    PrintError(ioEx, withStacktrace: false);
+                                }
                                 catch (Exception ex)
                                 {
                                     PrintError(ex);
@@ -540,7 +547,7 @@ namespace SshFileSync
 
         private SshCommand UnzipCompressedFileDiffAndRemoveOldFiles(string destinationDirectory, UpdateFlages updateFlags)
         {
-            var commandText = $"cd \"{destinationDirectory}\"";
+            var commandText = $"set -e;cd \"{destinationDirectory}\"";
             if (updateFlags.HasFlag(UpdateFlages.UPADTE_FILES))
             {
                 commandText += $";tar -zxf \"{_compressedUploadDiffContentFilename}\"";
@@ -554,7 +561,7 @@ namespace SshFileSync
             {
                 if (_sshDeltaCopyOptions.RemoveOldFiles)
                 {
-                    commandText += $";while read file ; do rm \"$file\" ; done < \"{_deleteListFileName}\"";
+                    commandText += $";while read file ; do rm -f \"$file\" ; done < \"{_deleteListFileName}\"";
                 }
 
                 if (_sshDeltaCopyOptions.RemoveTempDeleteListFile)
@@ -579,14 +586,21 @@ namespace SshFileSync
             if (_sshDeltaCopyOptions.PrintTimings)
             {
                 var currentElapsedMilliseconds = _stopWatch.ElapsedMilliseconds;
-                Console.WriteLine($"[{(currentElapsedMilliseconds - _lastElapsedMilliseconds),7} ms][{currentElapsedMilliseconds,7} ms] {text}");
+                LogOutput?.Invoke($"[{(currentElapsedMilliseconds - _lastElapsedMilliseconds),7} ms][{currentElapsedMilliseconds,7} ms] {text}");
                 _lastElapsedMilliseconds = currentElapsedMilliseconds;
             }
         }
 
-        private static void PrintError(Exception ex)
+        private void PrintError(Exception ex, bool withStacktrace = true)
         {
-            Console.WriteLine($"Exception: {ex.Message}\n{ex.StackTrace}");
+            if (withStacktrace)
+            {
+                LogOutput?.Invoke($"Exception: {ex.Message}\n{ex.StackTrace}");
+            }
+            else
+            {
+                LogOutput?.Invoke($"Exception: {ex.Message}");
+            }
         }
 
         private static IEnumerable<string> GetFiles(string path)
