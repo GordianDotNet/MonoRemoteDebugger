@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.VisualStudio.Settings;
+using Microsoft.VisualStudio.Shell.Settings;
 using MonoRemoteDebugger.SharedLib.Settings;
 using NLog;
 
@@ -49,8 +50,10 @@ namespace MonoRemoteDebugger.VSExtension.Settings
             store.SetString("MonoRemoteDebugger", "Settings", json);
         }
 
-        public static void Initialize(WritableSettingsStore configurationSettingsStore)
+        public static void Initialize(IServiceProvider serviceProvider)
         {
+            var settingsManager = new ShellSettingsManager(serviceProvider);
+            var configurationSettingsStore = settingsManager.GetWritableSettingsStore(SettingsScope.UserSettings);
             Instance.store = configurationSettingsStore;
         }
     }

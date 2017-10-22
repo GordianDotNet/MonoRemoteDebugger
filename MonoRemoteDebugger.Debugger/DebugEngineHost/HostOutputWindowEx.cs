@@ -52,13 +52,24 @@ namespace MonoRemoteDebugger.Debugger.DebugEngineHost
             {
             }
         }
+
+        public static void WriteLineLaunchError(string outputMessage)
+        {
+            try
+            {
+                VsImpl.SetText(outputMessage + Environment.NewLine);
+            }
+            catch (Exception)
+            {
+            }
+        }
     }
 
     public class VSErrorTextWriter : TextWriter
     {
         public override void WriteLine(string value)
         {
-            HostOutputWindowEx.WriteLaunchError(value + Environment.NewLine);
+            HostOutputWindowEx.WriteLineLaunchError(value);
         }
 
         public override void Write(char value)
