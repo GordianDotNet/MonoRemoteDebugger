@@ -182,7 +182,7 @@ namespace MonoRemoteDebugger.VSExtension
                 // Stop old instance
                 server?.Dispose();
 
-                await BuildSolutionAsync();
+                await _monoExtension.BuildSolutionAsync();
 
                 using (server = new MonoDebugServer())
                 {
@@ -213,7 +213,7 @@ namespace MonoRemoteDebugger.VSExtension
             {
                 try
                 {
-                    await BuildSolutionAsync();
+                    await _monoExtension.BuildSolutionAsync();
 
                     var settings = UserSettingsManager.Instance.Load();
                     var debugOptions = this._monoExtension.CreateDebugOptions(settings);
@@ -235,19 +235,7 @@ namespace MonoRemoteDebugger.VSExtension
                 }
             }
         }
-
-        private async System.Threading.Tasks.Task BuildSolutionAsync()
-        {
-            await System.Threading.Tasks.Task.Factory.StartNew(() =>
-            {
-                var failedBuilds = _monoExtension.BuildSolution();
-                if (failedBuilds > 0)
-                {
-                    throw new Exception($"Build failed! Project failed to build: {failedBuilds}.");
-                }
-            });
-        }
-
+        
         private async void DeployAndDebugOverSSHClicked(object sender, EventArgs e)
         {
             await DeployAndRunCommandOverSSH(true, true);
@@ -289,7 +277,7 @@ namespace MonoRemoteDebugger.VSExtension
 
                 if (deploy)
                 {
-                    await BuildSolutionAsync();
+                    await _monoExtension.BuildSolutionAsync();
                 }
 
                 var debugOptions = _monoExtension.CreateDebugOptions(settings, true);

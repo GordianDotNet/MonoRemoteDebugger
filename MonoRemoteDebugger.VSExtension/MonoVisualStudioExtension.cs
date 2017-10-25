@@ -30,6 +30,18 @@ namespace MonoRemoteDebugger.VSExtension
             _dte = dTE;
         }
 
+        internal async Task BuildSolutionAsync()
+        {
+            await System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                var failedBuilds = BuildSolution();
+                if (failedBuilds > 0)
+                {
+                    throw new Exception($"Build failed! Project failed to build: {failedBuilds}.");
+                }
+            });
+        }
+
         internal int BuildSolution()
         {
             var sb = (SolutionBuild2) _dte.Solution.SolutionBuild;
@@ -214,7 +226,7 @@ namespace MonoRemoteDebugger.VSExtension
                     Marshal.FreeCoTaskMem(pInfo);
             }
         }
-
+                
         public static string ComputeHash(string file)
         {
             using (FileStream stream = File.OpenRead(file))
