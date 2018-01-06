@@ -17,6 +17,11 @@ using Microsoft.MIDebugEngine;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using MonoRemoteDebugger.SharedLib.Settings;
+using Mono.Debugging.Soft;
+using Mono.Debugging.VisualStudio;
+using System.Runtime.Remoting;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Diagnostics;
 
 namespace MonoRemoteDebugger.VSExtension
 {
@@ -135,15 +140,28 @@ namespace MonoRemoteDebugger.VSExtension
                 vsProject.ConfigurationManager.ActiveConfiguration.Properties.Item("OutputPath").Value.ToString();
             string outputDir = Path.Combine(fullPath, outputPath);
             string outputFileName = vsProject.Properties.Item("OutputFileName").Value.ToString();
+            if (string.IsNullOrEmpty(outputFileName))
+            {
+                outputFileName = $"{vsProject.Name}.exe";
+                Debug.WriteLine($"OutputFileName for project {vsProject.Name} is empty! Using fallback: {outputFileName}");
+            }
             string assemblyPath = Path.Combine(outputDir, outputFileName);
             return assemblyPath;
         }
 
         internal string GetStartArguments()
         {
-            Project startupProject = GetStartupProject();
-            Configuration configuration = startupProject.ConfigurationManager.ActiveConfiguration;
-            return configuration.Properties.Item("StartArguments").Value?.ToString() ?? string.Empty;
+            try
+            {
+                Project startupProject = GetStartupProject();
+                Configuration configuration = startupProject.ConfigurationManager.ActiveConfiguration;
+                return configuration.Properties.Item("StartArguments").Value?.ToString() ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{nameof(GetStartArguments)}: {ex.Message} {ex.StackTrace}");
+                return string.Empty;
+            }
         }
         
         internal async Task AttachDebugger(DebugOptions debugOptions)
@@ -166,7 +184,7 @@ namespace MonoRemoteDebugger.VSExtension
                 await session.TransferFilesAsync();
                 await session.WaitForAnswerAsync(debugOptions.UserSettings.LastTimeout);
             }
-
+            
             IntPtr pInfo = GetDebugInfo(debugOptions);
             var sp = new ServiceProvider((IServiceProvider) _dte);
             try
@@ -196,16 +214,22 @@ namespace MonoRemoteDebugger.VSExtension
                     Marshal.FreeCoTaskMem(pInfo);
             }
         }
-
+        
         internal void AttachDebuggerToRunningProcess(DebugOptions debugOptions)
         {
+            if (AD7Guids.UseAD7Engine == EngineType.XamarinEngine)
+            {
+                // Workaround to get StartProject
+                XamarinEngine.StartupProject = GetStartupProject();
+            }
+
             IntPtr pInfo = GetDebugInfo(debugOptions);
             var sp = new ServiceProvider((IServiceProvider)_dte);
             try
             {
                 var dbg = (IVsDebugger)sp.GetService(typeof(SVsShellDebugger));
                 int hr = dbg.LaunchDebugTargets(1, pInfo);
-                Marshal.ThrowExceptionForHR(hr);
+                Marshal.ThrowExceptionForHR(hr);                
             }
             catch (Exception ex)
             {
@@ -226,7 +250,7 @@ namespace MonoRemoteDebugger.VSExtension
                     Marshal.FreeCoTaskMem(pInfo);
             }
         }
-                
+        
         public static string ComputeHash(string file)
         {
             using (FileStream stream = File.OpenRead(file))
@@ -255,13 +279,19 @@ namespace MonoRemoteDebugger.VSExtension
                 bstrOptions = debugOptions.SerializeToJson() // add debug engine options
             };
 
+            if (AD7Guids.UseAD7Engine == EngineType.XamarinEngine)
+            {
+                info.bstrPortName = "Mono";
+                info.clsidPortSupplier = AD7Guids.ProgramProviderGuid;
+            }
+
             info.cbSize = (uint)Marshal.SizeOf(info);
 
             IntPtr pInfo = Marshal.AllocCoTaskMem((int) info.cbSize);
             Marshal.StructureToPtr(info, pInfo, false);
             return pInfo;
         }
-
+        
         public DebugOptions CreateDebugOptions(UserSettings settings, bool useSSH = false)
         {
             var startupAssemblyPath = GetStartupAssemblyPath();

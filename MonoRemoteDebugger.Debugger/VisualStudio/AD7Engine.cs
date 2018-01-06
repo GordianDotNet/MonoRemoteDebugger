@@ -10,7 +10,7 @@ using MonoRemoteDebugger.SharedLib.Settings;
 namespace MonoRemoteDebugger.Debugger.VisualStudio
 {
     [ComVisible(true)]
-    [Guid(AD7Guids.EngineString)]
+    [Guid(AD7Guids.AD7EngineString)]
     public class AD7Engine : IDebugEngine2, IDebugEngineLaunch2, IDebugProgram3
     {
         private readonly AsyncDispatcher _dispatcher = new AsyncDispatcher();

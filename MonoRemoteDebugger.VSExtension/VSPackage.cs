@@ -13,6 +13,7 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.Win32;
 using MonoRemoteDebugger.Debugger.DebugEngineHost;
+using MonoRemoteDebugger.Debugger.VisualStudio;
 using MonoRemoteDebugger.SharedLib;
 using MonoRemoteDebugger.SharedLib.Server;
 using MonoRemoteDebugger.SharedLib.SSH;
@@ -47,7 +48,7 @@ namespace MonoRemoteDebugger.VSExtension
             _monoExtension = new MonoVisualStudioExtension(dte);
 
             TryRegisterAssembly();
-            
+
             Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
                 Source = new Uri("/MonoRemoteDebugger.VSExtension;component/Resources/Resources.xaml", UriKind.Relative)
@@ -63,12 +64,12 @@ namespace MonoRemoteDebugger.VSExtension
         {
             try
             {
-                RegistryKey regKey = Registry.ClassesRoot.OpenSubKey(@"CLSID\{8BF3AB9F-3864-449A-93AB-E7B0935FC8F5}");
+                RegistryKey regKey = Registry.ClassesRoot.OpenSubKey($@"CLSID\{{{AD7Guids.EngineGuid.ToString()}}}");
 
                 if (regKey != null)
                     return; // Already registered
 
-                string location = typeof(DebuggedProcess).Assembly.Location;
+                string location = typeof(AD7Engine).Assembly.Location;
 
                 string regasm = @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe";
                 if (!Environment.Is64BitOperatingSystem)
@@ -189,7 +190,7 @@ namespace MonoRemoteDebugger.VSExtension
                     server.Start();
                     var settings = UserSettingsManager.Instance.Load();
                     var debugOptions = this._monoExtension.CreateDebugOptions(settings);
-                    debugOptions.UserSettings.LastIp = MonoProcess.GetLocalIp().ToString();
+                    debugOptions.UserSettings.LastIp = SharedLib.Server.MonoProcess.GetLocalIp().ToString();
                     await _monoExtension.AttachDebugger(debugOptions);
                 }
             }

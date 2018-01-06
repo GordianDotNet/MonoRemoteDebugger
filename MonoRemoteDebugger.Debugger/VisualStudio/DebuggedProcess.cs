@@ -109,12 +109,12 @@ namespace Microsoft.MIDebugEngine
                     EventType.ThreadDeath,
                     EventType.AppDomainCreate,
                     EventType.AppDomainUnload,
-                    //MethodEntry,
-                    //MethodExit,
+                    //EventType.MethodEntry,
+                    //EventType.MethodExit,
                     EventType.AssemblyLoad,
                     EventType.AssemblyUnload,
-                    //Breakpoint,
-                    //Step,
+                    //EventType.Breakpoint, // Not allowed via EnableEvents
+                    //EventType.Step,
                     EventType.TypeLoad,
                     EventType.Exception,
                     EventType.KeepAlive,
@@ -320,6 +320,7 @@ namespace Microsoft.MIDebugEngine
             {
                 if (type != EventType.VMStart)
                 {
+                    logger.Trace($"HandleEventSet: ResumeVM ({ev})");
                     ResumeVM();
                 }
             }
@@ -327,6 +328,10 @@ namespace Microsoft.MIDebugEngine
             {
                 if (type != EventType.VMStart && _vm.Version.AtLeast(2, 2))
                     throw;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
             }
         }
 
