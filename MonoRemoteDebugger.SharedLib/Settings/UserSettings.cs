@@ -15,7 +15,7 @@ namespace MonoRemoteDebugger.SharedLib.Settings
             SSHPassword = string.Empty;
             SSHDeployPath = "./MonoDebugTemp/";
             SSHMonoDebugPort = GlobalConfig.Current.DebuggerAgentPort;
-            SSHPdb2mdbCommand = "pdb2mdb";
+            SSHPdb2mdbCommand = "mono /usr/lib/mono/4.5/pdb2mdb.exe";
             SSHDebugConnectionTimeout = 20;
         }
 
