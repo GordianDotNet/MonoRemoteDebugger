@@ -64,7 +64,7 @@
     <SignAssembly>false</SignAssembly>
     <AssemblyOriginatorKeyFile>
     </AssemblyOriginatorKeyFile>
-    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -88,7 +88,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Clide">
-      <HintPath>..\Mono.Debugging\Clide.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Clide.dll</HintPath>
     </Reference>
     <Reference Include="envdte, Version=8.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
       <EmbedInteropTypes>False</EmbedInteropTypes>
@@ -100,14 +100,14 @@
     </Reference>
     <Reference Include="ICSharpCode.NRefactory, Version=5.0.0.0, Culture=neutral, PublicKeyToken=d4bfe873e7598c49, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\ICSharpCode.NRefactory.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\ICSharpCode.NRefactory.dll</HintPath>
     </Reference>
     <Reference Include="ICSharpCode.NRefactory.Cecil">
-      <HintPath>..\Mono.Debugging\ICSharpCode.NRefactory.Cecil.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\ICSharpCode.NRefactory.Cecil.dll</HintPath>
     </Reference>
     <Reference Include="ICSharpCode.NRefactory.CSharp, Version=5.0.0.0, Culture=neutral, PublicKeyToken=d4bfe873e7598c49, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\ICSharpCode.NRefactory.CSharp.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\ICSharpCode.NRefactory.CSharp.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.VisualStudio.GraphModel, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\VSSDK.GraphModel.11.0.4\lib\net45\Microsoft.VisualStudio.GraphModel.dll</HintPath>
@@ -183,42 +183,36 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="Mono.Cecil, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Cecil.dll</HintPath>
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Cecil.Mdb, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Cecil.Mdb.dll</HintPath>
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Mdb.dll</HintPath>
     </Reference>
-    <Reference Include="Mono.Cecil.Pdb">
-      <HintPath>..\Mono.Debugging\Mono.Cecil.Pdb.dll</HintPath>
+    <Reference Include="Mono.Cecil.Pdb, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Pdb.dll</HintPath>
     </Reference>
-    <Reference Include="Mono.Cecil.Rocks">
-      <HintPath>..\Mono.Debugging\Mono.Cecil.Rocks.dll</HintPath>
+    <Reference Include="Mono.Cecil.Rocks, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Rocks.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Debugger.Soft, Version=0.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Debugger.Soft.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Mono.Debugger.Soft.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Debugging, Version=0.0.0.0, Culture=neutral, PublicKeyToken=5e9ce85b0923c84f, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Debugging.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Mono.Debugging.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Debugging.Soft, Version=0.0.0.0, Culture=neutral, PublicKeyToken=5e9ce85b0923c84f, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Debugging.Soft.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Mono.Debugging.Soft.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Debugging.VisualStudio, Version=4.9.0.0, Culture=neutral, PublicKeyToken=ec9700d15469a0df, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Debugging.VisualStudio.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Mono.Debugging.VisualStudio.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Debugging.VisualStudio.Vsix, Version=4.9.0.0, Culture=neutral, PublicKeyToken=ec9700d15469a0df, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Debugging.VisualStudio.Vsix.dll</HintPath>
-    </Reference>
-    <Reference Include="Mono.Posix, Version=2.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Mono.Debugging\Mono.Posix.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Mono.Debugging.VisualStudio.Vsix.dll</HintPath>
     </Reference>
     <Reference Include="NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c, processorArchitecture=MSIL">
       <HintPath>..\packages\NLog.4.3.5\lib\net45\NLog.dll</HintPath>
@@ -235,7 +229,7 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Design" />
     <Reference Include="System.Diagnostics.Tracer">
-      <HintPath>..\Mono.Debugging\System.Diagnostics.Tracer.dll</HintPath>
+      <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\System.Diagnostics.Tracer.dll</HintPath>
     </Reference>
     <Reference Include="System.Drawing" />
     <Reference Include="System.Transactions" />
@@ -319,16 +313,6 @@
     </Resource>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MonoRemoteDebugger.SharedLib\MonoRemoteDebugger.SharedLib.csproj">
-      <Project>{fe76aee5-c4e3-45ed-aa18-29df82ab405c}</Project>
-      <Name>MonoRemoteDebugger.SharedLib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\MonoRemoteDebugger.Debugger\MonoRemoteDebugger.Debugger.csproj">
-      <Project>{c99840f2-29f7-44fc-a152-3cdd7fc41b21}</Project>
-      <Name>MonoRemoteDebugger.Debugger</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
     <Page Include="Resources\Resources.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
@@ -365,6 +349,16 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Mono.Debugging.VisualStudio\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MonoRemoteDebugger.Debugger\MonoRemoteDebugger.Debugger.csproj">
+      <Project>{c99840f2-29f7-44fc-a152-3cdd7fc41b21}</Project>
+      <Name>MonoRemoteDebugger.Debugger</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\MonoRemoteDebugger.SharedLib\MonoRemoteDebugger.SharedLib.csproj">
+      <Project>{fe76aee5-c4e3-45ed-aa18-29df82ab405c}</Project>
+      <Name>MonoRemoteDebugger.SharedLib</Name>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup>
     <UseCodebase>true</UseCodebase>
