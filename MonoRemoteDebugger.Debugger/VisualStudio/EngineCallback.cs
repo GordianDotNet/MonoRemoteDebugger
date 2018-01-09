@@ -90,6 +90,13 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 AD7StoppingEvent.Attributes);
         }
 
+        internal void ThreadDestroyed(AD7Thread thread, uint exitCode)
+        {
+            var iid = new Guid(Microsoft.MIDebugEngine.AD7ThreadCreateEvent.IID);
+            _eventCallback.Event(_engine, _engine.RemoteProcess, _engine, thread, new Microsoft.MIDebugEngine.AD7ThreadDestroyEvent(exitCode), ref iid,
+                AD7StoppingEvent.Attributes);
+        }
+
         internal void StepCompleted(AD7Thread thread)
         {
             var iid = new Guid(Microsoft.MIDebugEngine.AD7StepCompleteEvent.IID);

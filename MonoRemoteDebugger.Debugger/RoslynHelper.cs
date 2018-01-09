@@ -25,6 +25,11 @@ namespace MonoRemoteDebugger.Debugger
             {
                 logger.Trace("Line: {0} Column: {1} Source: {2}", startLine, startColumn, fileName);
 
+                if (!File.Exists(fileName))
+                {
+                    return null;
+                }
+
                 using (var stream = File.OpenRead(fileName))
                 {
                     SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(SourceText.From(stream), path: fileName);
@@ -72,29 +77,6 @@ namespace MonoRemoteDebugger.Debugger
             return new MITextPosition(fileName,
                 new TEXT_POSITION() { dwLine = (uint)mapped.EndLinePosition.Line, dwColumn = (uint)mapped.EndLinePosition.Character - 1 },
                 new TEXT_POSITION() { dwLine = (uint)mapped.EndLinePosition.Line, dwColumn = (uint)mapped.EndLinePosition.Character });
-        }
-
-        internal static void GetILOffset(AD7PendingBreakpoint bp, MethodMirror methodMirror, out int ilOffset)
-        {
-            List<Mono.Debugger.Soft.Location> locations = methodMirror.Locations.ToList();
-
-            foreach (Mono.Debugger.Soft.Location location in locations)
-            {
-                int line = location.LineNumber;
-                int column = location.ColumnNumber;
-
-                if (line != bp.StartLine + 1)
-                    continue;
-                //if (column != bp.StartColumn)
-                //    continue;
-
-                ilOffset = location.ILOffset;
-
-                Console.WriteLine(location.ColumnNumber);
-                return;
-            }
-
-            throw new Exception("Cant bind breakpoint");
         }
     }
 }

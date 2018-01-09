@@ -4,22 +4,24 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using EnvDTE;
 using EnvDTE80;
-using Microsoft.VisualStudio.Settings;
+using Microsoft.MIDebugEngine;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
-using Microsoft.VisualStudio.Shell.Settings;
 using Microsoft.Win32;
+using MonoRemoteDebugger.Debugger.DebugEngineHost;
+using MonoRemoteDebugger.Debugger.VisualStudio;
 using MonoRemoteDebugger.SharedLib;
 using MonoRemoteDebugger.SharedLib.Server;
-using MonoRemoteDebugger.Debugger;
+using MonoRemoteDebugger.SharedLib.SSH;
 using MonoRemoteDebugger.VSExtension.Settings;
 using MonoRemoteDebugger.VSExtension.Views;
 using NLog;
+using SshFileSync;
 using Process = System.Diagnostics.Process;
-using Microsoft.MIDebugEngine;
 
 namespace MonoRemoteDebugger.VSExtension
 {
@@ -31,87 +33,60 @@ namespace MonoRemoteDebugger.VSExtension
     public sealed class VSPackage : Package, IDisposable
     {
         private static readonly Logger logger = LogManager.GetCurrentClassLogger();
-        private MonoVisualStudioExtension monoExtension;
+        private MonoVisualStudioExtension _monoExtension;
         private MonoDebugServer server = new MonoDebugServer();
 
         protected override void Initialize()
         {
-            var settingsManager = new ShellSettingsManager(this);
-            var configurationSettingsStore = settingsManager.GetWritableSettingsStore(SettingsScope.UserSettings);
-            UserSettingsManager.Initialize(configurationSettingsStore);
-            MonoLogger.Setup();
-            base.Initialize();
-            var dte = (DTE)GetService(typeof(DTE));
-            monoExtension = new MonoVisualStudioExtension(dte);
-            TryRegisterAssembly();
+            UserSettingsManager.Initialize(this);
 
+            MonoLogger.Setup();
+
+            base.Initialize();
+            
+            var dte = (DTE)GetService(typeof(DTE));
+            _monoExtension = new MonoVisualStudioExtension(dte);
+
+            TryRegisterAssembly();
 
             Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
                 Source = new Uri("/MonoRemoteDebugger.VSExtension;component/Resources/Resources.xaml", UriKind.Relative)
             });
+            
+            InstallMenu();
 
-            var mcs = GetService(typeof(IMenuCommandService)) as OleMenuCommandService;
-            InstallMenu(mcs);
-        }
-
-        private void InstallMenu(OleMenuCommandService mcs)
-        {
-            if (mcs != null)
-            {
-                var debugLocally = new CommandID(PackageGuids.guidMonoDebugger_VS2013CmdSet, (int)PackageIds.cmdLocalDebugCode);
-                var localCmd = new OleMenuCommand(DebugLocalClicked, debugLocally);
-                localCmd.BeforeQueryStatus += cmd_BeforeQueryStatus;
-                mcs.AddCommand(localCmd);
-
-
-                var menuCommandID = new CommandID(PackageGuids.guidMonoDebugger_VS2013CmdSet,
-                    (int)PackageIds.cmdRemodeDebugCode);
-                var cmd = new OleMenuCommand(DebugRemoteClicked, menuCommandID);
-                cmd.BeforeQueryStatus += cmd_BeforeQueryStatus;
-                mcs.AddCommand(cmd);
-
-                var cmdOpenLogFileId = new CommandID(PackageGuids.guidMonoDebugger_VS2013CmdSet,
-                    (int)PackageIds.cmdOpenLogFile);
-                var openCmd = new OleMenuCommand(OpenLogFile, cmdOpenLogFileId);
-                openCmd.BeforeQueryStatus += (o, e) => openCmd.Enabled = File.Exists(MonoLogger.LoggerPath);
-                mcs.AddCommand(openCmd);
-            }
-        }
-
-        private void OpenLogFile(object sender, EventArgs e)
-        {
-            if (File.Exists(MonoLogger.LoggerPath))
-            {
-                Process.Start(MonoLogger.LoggerPath);
-            }
+            // Workaround: Don't show Visual Studio WPF DataBinding errors in Output window
+            System.Diagnostics.PresentationTraceSources.DataBindingSource.Switch.Level = System.Diagnostics.SourceLevels.Critical;
         }
 
         private void TryRegisterAssembly()
         {
             try
             {
-                RegistryKey regKey = Registry.ClassesRoot.OpenSubKey(@"CLSID\{8BF3AB9F-3864-449A-93AB-E7B0935FC8F5}");
+                RegistryKey regKey = Registry.ClassesRoot.OpenSubKey($@"CLSID\{{{AD7Guids.EngineGuid.ToString()}}}");
 
                 if (regKey != null)
-                    return;
+                    return; // Already registered
 
-                string location = typeof(DebuggedProcess).Assembly.Location;
+                string location = typeof(AD7Engine).Assembly.Location;
 
                 string regasm = @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe";
                 if (!Environment.Is64BitOperatingSystem)
-                    regasm = @"C:\Windows\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe";
-
-                var p = new ProcessStartInfo(regasm, location);
-                p.Verb = "runas";
-                p.RedirectStandardOutput = true;
-                p.UseShellExecute = false;
-                p.CreateNoWindow = true;
-
-                Process proc = Process.Start(p);
-                while (!proc.HasExited)
                 {
-                    string txt = proc.StandardOutput.ReadToEnd();
+                    regasm = @"C:\Windows\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe";
+                }
+
+                var regasmProcessStartInfo = new ProcessStartInfo(regasm, location);
+                regasmProcessStartInfo.Verb = "runas";
+                regasmProcessStartInfo.RedirectStandardOutput = true;
+                regasmProcessStartInfo.UseShellExecute = false;
+                regasmProcessStartInfo.CreateNoWindow = true;
+
+                Process process = Process.Start(regasmProcessStartInfo);
+                while (!process.HasExited)
+                {
+                    string txt = process.StandardOutput.ReadToEnd();
                 }
 
                 using (RegistryKey config = VSRegistry.RegistryRoot(__VsLocalRegistryType.RegType_Configuration))
@@ -122,7 +97,7 @@ namespace MonoRemoteDebugger.VSExtension
             catch (UnauthorizedAccessException)
             {
                 MessageBox.Show(
-                    "Failed finish installation of MonoRemoteDebugger - Please run Visual Studio once als Administrator...",
+                    "Failed finish installation of MonoRemoteDebugger - Please run Visual Studio once as Administrator...",
                     "MonoRemoteDebugger", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception ex)
@@ -131,7 +106,57 @@ namespace MonoRemoteDebugger.VSExtension
             }
         }
 
-        private void cmd_BeforeQueryStatus(object sender, EventArgs e)
+        private void InstallMenu()
+        {
+            var mcs = GetService(typeof(IMenuCommandService)) as OleMenuCommandService;
+            if (mcs == null)
+            {
+                logger.Error($"Service {nameof(IMenuCommandService)} not found!");
+            }
+            
+            AddMenuItem(mcs, PackageIds.cmdOpenLogFile, CheckOpenLogFile, OpenLogFile);
+            AddMenuItem(mcs, PackageIds.cmdLocalDebugCode, CheckStartupProjects, DebugLocalClicked);
+            AddMenuItem(mcs, PackageIds.cmdRemodeDebugCode, CheckStartupProjects, DebugRemoteClicked);
+                
+            AddMenuItem(mcs, PackageIds.cmdDeployAndDebugOverSSH, CheckStartupProjects, DeployAndDebugOverSSHClicked);
+            AddMenuItem(mcs, PackageIds.cmdDeployOverSSH, CheckStartupProjects, DeployOverSSHClicked);
+            AddMenuItem(mcs, PackageIds.cmdDebugOverSSH, CheckStartupProjects, DebugOverSSHClicked);
+            AddMenuItem(mcs, PackageIds.cmdOpenSSHDebugConfig, CheckStartupProjects, OpenSSHDebugConfigDlg);
+        }
+
+        private OleMenuCommand AddMenuItem(OleMenuCommandService mcs, int cmdCode, EventHandler check, EventHandler action)
+        {
+            var commandID = new CommandID(PackageGuids.guidMonoDebugger_VS2013CmdSet, cmdCode);
+            var menuCommand = new OleMenuCommand(action, commandID);
+            menuCommand.BeforeQueryStatus += check;
+            mcs.AddCommand(menuCommand);
+            return menuCommand;
+        }
+
+        private void CheckOpenLogFile(object sender, EventArgs e)
+        {
+            var menuCommand = sender as OleMenuCommand;
+            if (menuCommand != null)
+            {
+                menuCommand.Enabled = File.Exists(MonoLogger.LoggerPath);
+            }
+        }
+
+        private void OpenLogFile(object sender, EventArgs e)
+        {
+            if (File.Exists(MonoLogger.LoggerPath))
+            {
+                Process.Start(MonoLogger.LoggerPath);
+            }
+            else
+            {
+                MessageBox.Show(
+                    $"Logfile {MonoLogger.LoggerPath} not found!",
+                    "MonoRemoteDebugger", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void CheckStartupProjects(object sender, EventArgs e)
         {
             var menuCommand = sender as OleMenuCommand;
             if (menuCommand != null)
@@ -140,7 +165,9 @@ namespace MonoRemoteDebugger.VSExtension
                 var sb = (SolutionBuild2)dte.Solution.SolutionBuild;
                 menuCommand.Visible = sb.StartupProjects != null;
                 if (menuCommand.Visible)
+                {
                     menuCommand.Enabled = ((Array)sb.StartupProjects).Cast<string>().Count() == 1;
+                }
             }
         }
 
@@ -153,35 +180,33 @@ namespace MonoRemoteDebugger.VSExtension
         {
             try
             {
-                if (server != null)
-                {
-                    server.Stop();
-                    server = null;
-                }
+                // Stop old instance
+                server?.Dispose();
 
-                monoExtension.BuildSolution();
+                await _monoExtension.BuildSolutionAsync();
 
                 using (server = new MonoDebugServer())
                 {
                     server.Start();
-                    await monoExtension.AttachDebugger(MonoProcess.GetLocalIp().ToString());
+                    var settings = UserSettingsManager.Instance.Load();
+                    var debugOptions = this._monoExtension.CreateDebugOptions(settings);
+                    debugOptions.UserSettings.LastIp = SharedLib.Server.MonoProcess.GetLocalIp().ToString();
+                    await _monoExtension.AttachDebugger(debugOptions);
                 }
             }
             catch (Exception ex)
             {
                 logger.Error(ex);
-                if (server != null)
-                    server.Stop();
                 MessageBox.Show(ex.Message, "MonoRemoteDebugger", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void DebugRemoteClicked(object sender, EventArgs e)
         {
-            StartSearching();
+            OpenRemoteConfigDlg();
         }
 
-        private async void StartSearching()
+        private async void OpenRemoteConfigDlg()
         {
             var dlg = new ServersFound();
 
@@ -189,12 +214,20 @@ namespace MonoRemoteDebugger.VSExtension
             {
                 try
                 {
-                    int timeout = dlg.ViewModel.AwaitTimeout;
-                    monoExtension.BuildSolution();
+                    await _monoExtension.BuildSolutionAsync();
+
+                    var settings = UserSettingsManager.Instance.Load();
+                    var debugOptions = this._monoExtension.CreateDebugOptions(settings);
+
                     if (dlg.ViewModel.SelectedServer != null)
-                        await monoExtension.AttachDebugger(dlg.ViewModel.SelectedServer.IpAddress.ToString(), timeout);
+                    {
+                        debugOptions.UserSettings.LastIp = dlg.ViewModel.SelectedServer.IpAddress.ToString();
+                        await _monoExtension.AttachDebugger(debugOptions);
+                    }
                     else if (!string.IsNullOrWhiteSpace(dlg.ViewModel.ManualIp))
-                        await monoExtension.AttachDebugger(dlg.ViewModel.ManualIp, timeout);
+                    {
+                        await _monoExtension.AttachDebugger(debugOptions);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -203,7 +236,103 @@ namespace MonoRemoteDebugger.VSExtension
                 }
             }
         }
+        
+        private async void DeployAndDebugOverSSHClicked(object sender, EventArgs e)
+        {
+            await DeployAndRunCommandOverSSH(true, true);
+        }
+        
+        private async void DeployOverSSHClicked(object sender, EventArgs e)
+        {
+            await DeployAndRunCommandOverSSH(true, false);
+        }
 
+        private async void DebugOverSSHClicked(object sender, EventArgs e)
+        {
+            await DeployAndRunCommandOverSSH(false, true);
+        }
+        
+        private void OpenSSHDebugConfigDlg(object sender, EventArgs e)
+        {
+            var dlg = new SSHDebugConfig();
+
+            if (dlg.ShowDialog().GetValueOrDefault())
+            {
+                // Saved
+            }
+        }
+
+        private async Task<bool> DeployAndRunCommandOverSSH(bool deploy, bool startDebugger)
+        {
+            // TODO error handling
+            // TODO show ssh output stream
+            // TODO stop monoRemoteSshDebugTask properly
+            try
+            {
+                if (!deploy && !startDebugger)
+                {
+                    return true;
+                }
+
+                var settings = UserSettingsManager.Instance.Load();
+
+                if (deploy)
+                {
+                    await _monoExtension.BuildSolutionAsync();
+                }
+
+                var debugOptions = _monoExtension.CreateDebugOptions(settings, true);
+                
+                var options = new SshDeltaCopy.Options()
+                {
+                    Host = settings.SSHHostIP,
+                    Port = settings.SSHPort,
+                    Username = settings.SSHUsername,
+                    Password = settings.SSHPassword,
+                    SourceDirectory = debugOptions.OutputDirectory,
+                    DestinationDirectory = settings.SSHDeployPath,
+                    RemoveOldFiles = true,
+                    PrintTimings = true,
+                    RemoveTempDeleteListFile = true,
+                };
+
+                if (deploy)
+                {
+                    await _monoExtension.ConvertPdb2Mdb(options.SourceDirectory, HostOutputWindowEx.WriteLineLaunchError);
+                }
+
+                System.Threading.Tasks.Task monoRemoteSshDebugTask;
+                if (startDebugger)
+                {
+                    if (deploy)
+                    {
+                        monoRemoteSshDebugTask = await SSHDebugger.DeployAndDebugAsync(options, debugOptions, HostOutputWindowEx.WriteLineLaunchError);
+                    }
+                    else
+                    {
+                        monoRemoteSshDebugTask = await SSHDebugger.DebugAsync(options, debugOptions, HostOutputWindowEx.WriteLineLaunchError);
+                    }
+
+                    _monoExtension.AttachDebuggerToRunningProcess(debugOptions);
+                }
+                else
+                {
+                    monoRemoteSshDebugTask = await SSHDebugger.DeployAsync(options, debugOptions, HostOutputWindowEx.WriteLineLaunchError);
+                }
+                
+                await monoRemoteSshDebugTask;
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
+                MessageBox.Show(ex.Message, "MonoRemoteDebugger", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+
+            return false;
+        }
+        
         #region IDisposable Members
         private bool disposed = false;
         protected override void Dispose(bool disposing)
@@ -216,7 +345,7 @@ namespace MonoRemoteDebugger.VSExtension
             if (disposing)
             {
                 //Dispose managed resources
-                this.server.Dispose();
+                server?.Dispose();
             }
 
             //Dispose unmanaged resources here.

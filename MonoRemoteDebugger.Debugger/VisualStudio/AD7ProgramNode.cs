@@ -31,8 +31,8 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         public int GetHostMachineName_V7(out string pbstrHostMachineName)
         {
             DebugHelper.TraceEnteringMethod();
-            pbstrHostMachineName = null;
-            return VSConstants.E_NOTIMPL;
+            pbstrHostMachineName = _process.Engine.HostName;
+            return VSConstants.S_OK;
         }
 
         public int GetEngineInfo(out string pbstrEngine, out Guid pguidEngine)
@@ -46,8 +46,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         public int GetHostName(enum_GETHOSTNAME_TYPE dwHostNameType, out string pbstrHostName)
         {
             DebugHelper.TraceEnteringMethod();
-            pbstrHostName = null;
-            _process.StartDebugging();
+            pbstrHostName = _process.Engine.HostName;
             return VSConstants.S_OK;
         }
 
@@ -62,8 +61,8 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         public int GetProgramName(out string pbstrProgramName)
         {
             DebugHelper.TraceEnteringMethod();
-            pbstrProgramName = null;
-            return VSConstants.E_NOTIMPL;
+            pbstrProgramName = _process.Engine.ProgramName;
+            return VSConstants.S_OK;
         }
     }
 }

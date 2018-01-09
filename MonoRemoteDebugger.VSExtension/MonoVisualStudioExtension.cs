@@ -16,6 +16,12 @@ using Task = System.Threading.Tasks.Task;
 using Microsoft.MIDebugEngine;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using MonoRemoteDebugger.SharedLib.Settings;
+using Mono.Debugging.Soft;
+using Mono.Debugging.VisualStudio;
+using System.Runtime.Remoting;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Diagnostics;
 
 namespace MonoRemoteDebugger.VSExtension
 {
@@ -29,10 +35,23 @@ namespace MonoRemoteDebugger.VSExtension
             _dte = dTE;
         }
 
-        internal void BuildSolution()
+        internal async Task BuildSolutionAsync()
+        {
+            await System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                var failedBuilds = BuildSolution();
+                if (failedBuilds > 0)
+                {
+                    throw new Exception($"Build failed! Project failed to build: {failedBuilds}.");
+                }
+            });
+        }
+
+        internal int BuildSolution()
         {
             var sb = (SolutionBuild2) _dte.Solution.SolutionBuild;
             sb.Build(true);
+            return sb.LastBuildInfo;
         }
 
         internal string GetStartupAssemblyPath()
@@ -121,36 +140,52 @@ namespace MonoRemoteDebugger.VSExtension
                 vsProject.ConfigurationManager.ActiveConfiguration.Properties.Item("OutputPath").Value.ToString();
             string outputDir = Path.Combine(fullPath, outputPath);
             string outputFileName = vsProject.Properties.Item("OutputFileName").Value.ToString();
+            if (string.IsNullOrEmpty(outputFileName))
+            {
+                outputFileName = $"{vsProject.Name}.exe";
+                Debug.WriteLine($"OutputFileName for project {vsProject.Name} is empty! Using fallback: {outputFileName}");
+            }
             string assemblyPath = Path.Combine(outputDir, outputFileName);
             return assemblyPath;
         }
 
-
-        internal async Task AttachDebugger(string ipAddress, int timeout=10000)
+        internal string GetStartArguments()
         {
-            string path = GetStartupAssemblyPath();
-            string targetExe = Path.GetFileName(path);
-            string outputDirectory = Path.GetDirectoryName(path);
-            string appHash = ComputeHash(path);
+            try
+            {
+                Project startupProject = GetStartupProject();
+                Configuration configuration = startupProject.ConfigurationManager.ActiveConfiguration;
+                return configuration.Properties.Item("StartArguments").Value?.ToString() ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{nameof(GetStartArguments)}: {ex.Message} {ex.StackTrace}");
+                return string.Empty;
+            }
+        }
+        
+        internal async Task AttachDebugger(DebugOptions debugOptions)
+        {
+            string appHash = ComputeHash(debugOptions.StartupAssemblyPath);
 
             Project startup = GetStartupProject();
 
             bool isWeb = ((object[]) startup.ExtenderNames).Any(x => x.ToString() == "WebApplication");
             ApplicationType appType = isWeb ? ApplicationType.Webapplication : ApplicationType.Desktopapplication;
             if (appType == ApplicationType.Webapplication)
-                outputDirectory += @"\..\..\";
-
-            var client = new DebugClient(appType, targetExe, outputDirectory, appHash);
-            DebugSession session = await client.ConnectToServerAsync(ipAddress);
-            var debugSessionStarted = await session.RestartDebuggingAsync(timeout);
+                debugOptions.OutputDirectory += @"\..\..\";
+            
+            var client = new DebugClient(appType, debugOptions.TargetExeFileName, debugOptions.StartArguments, debugOptions.OutputDirectory, appHash);
+            DebugSession session = await client.ConnectToServerAsync(debugOptions.UserSettings.LastIp);
+            var debugSessionStarted = await session.RestartDebuggingAsync(debugOptions.UserSettings.LastTimeout);
 
             if (!debugSessionStarted)
             {
                 await session.TransferFilesAsync();
-                await session.WaitForAnswerAsync(timeout);
+                await session.WaitForAnswerAsync(debugOptions.UserSettings.LastTimeout);
             }
-
-            IntPtr pInfo = GetDebugInfo(ipAddress, targetExe, outputDirectory);
+            
+            IntPtr pInfo = GetDebugInfo(debugOptions);
             var sp = new ServiceProvider((IServiceProvider) _dte);
             try
             {
@@ -179,7 +214,43 @@ namespace MonoRemoteDebugger.VSExtension
                     Marshal.FreeCoTaskMem(pInfo);
             }
         }
+        
+        internal void AttachDebuggerToRunningProcess(DebugOptions debugOptions)
+        {
+            if (AD7Guids.UseAD7Engine == EngineType.XamarinEngine)
+            {
+                // Workaround to get StartProject
+                XamarinEngine.StartupProject = GetStartupProject();
+            }
 
+            IntPtr pInfo = GetDebugInfo(debugOptions);
+            var sp = new ServiceProvider((IServiceProvider)_dte);
+            try
+            {
+                var dbg = (IVsDebugger)sp.GetService(typeof(SVsShellDebugger));
+                int hr = dbg.LaunchDebugTargets(1, pInfo);
+                Marshal.ThrowExceptionForHR(hr);                
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
+                string msg;
+                var sh = (IVsUIShell)sp.GetService(typeof(SVsUIShell));
+                sh.GetErrorInfo(out msg);
+
+                if (!string.IsNullOrWhiteSpace(msg))
+                {
+                    logger.Error(msg);
+                }
+                throw;
+            }
+            finally
+            {
+                if (pInfo != IntPtr.Zero)
+                    Marshal.FreeCoTaskMem(pInfo);
+            }
+        }
+        
         public static string ComputeHash(string file)
         {
             using (FileStream stream = File.OpenRead(file))
@@ -190,24 +261,96 @@ namespace MonoRemoteDebugger.VSExtension
             }
         }
 
-        private IntPtr GetDebugInfo(string args, string targetExe, string outputDirectory)
+        private IntPtr GetDebugInfo(DebugOptions debugOptions)//string args, int debugPort, string targetExe, string outputDirectory)
         {
-            var info = new VsDebugTargetInfo();
-            info.cbSize = (uint) Marshal.SizeOf(info);
-            info.dlo = DEBUG_LAUNCH_OPERATION.DLO_CreateProcess;
+            var info = new VsDebugTargetInfo()
+            {
+                //cbSize = (uint)Marshal.SizeOf(info),
+                dlo = DEBUG_LAUNCH_OPERATION.DLO_CreateProcess,
+                bstrExe = debugOptions.StartupAssemblyPath,
+                bstrCurDir = debugOptions.OutputDirectory,
+                bstrArg = debugOptions.StartArguments,
+                bstrRemoteMachine = null, // debug locally                
+                grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_StopDebuggingOnEnd, // When this process ends, debugging is stopped.
+                //grfLaunch = (uint)__VSDBGLAUNCHFLAGS.DBGLAUNCH_DetachOnStop, // Detaches instead of terminating when debugging stopped.
+                fSendStdoutToOutputWindow = 0,
+                clsidCustom = AD7Guids.EngineGuid,
+                //bstrEnv = "",
+                bstrOptions = debugOptions.SerializeToJson() // add debug engine options
+            };
 
-            info.bstrExe = Path.Combine(outputDirectory, targetExe);
-            info.bstrCurDir = outputDirectory;
-            info.bstrArg = args; // no command line parameters
-            info.bstrRemoteMachine = null; // debug locally
-            info.grfLaunch = (uint) __VSDBGLAUNCHFLAGS.DBGLAUNCH_StopDebuggingOnEnd;
-            info.fSendStdoutToOutputWindow = 0;
-            info.clsidCustom = AD7Guids.EngineGuid;
-            info.grfLaunch = 0;
+            if (AD7Guids.UseAD7Engine == EngineType.XamarinEngine)
+            {
+                info.bstrPortName = "Mono";
+                info.clsidPortSupplier = AD7Guids.ProgramProviderGuid;
+            }
+
+            info.cbSize = (uint)Marshal.SizeOf(info);
 
             IntPtr pInfo = Marshal.AllocCoTaskMem((int) info.cbSize);
             Marshal.StructureToPtr(info, pInfo, false);
             return pInfo;
+        }
+        
+        public DebugOptions CreateDebugOptions(UserSettings settings, bool useSSH = false)
+        {
+            var startupAssemblyPath = GetStartupAssemblyPath();
+            var targetExeFileName = Path.GetFileName(startupAssemblyPath);
+            var outputDirectory = Path.GetDirectoryName(startupAssemblyPath);
+            var startArguments = GetStartArguments();
+
+            var debugOptions = new DebugOptions()
+            {
+                UseSSH = useSSH,
+                StartupAssemblyPath = startupAssemblyPath,
+                UserSettings = settings,
+                OutputDirectory = outputDirectory,
+                TargetExeFileName = targetExeFileName,
+                StartArguments = startArguments
+            };
+
+            return debugOptions;
+        }
+
+        public Task ConvertPdb2Mdb(string outputDirectory, Action<string> msgOutput)
+        {
+            return System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                msgOutput?.Invoke($"Start ConvertPdb2Mdb: {outputDirectory} ...");
+
+                var assemblyFiles = Directory.EnumerateFiles(outputDirectory, "*.exe", SearchOption.AllDirectories)
+                    .Union(Directory.EnumerateFiles(outputDirectory, "*.dll", SearchOption.AllDirectories));
+
+                foreach (string file in assemblyFiles)
+                {
+                    var pdbFile = Path.ChangeExtension(file, "pdb");
+                    if (!File.Exists(pdbFile))
+                    {
+                        // No *.pdb file found for file
+                        continue;
+                    }
+
+                    var mdbFile = file + ".mdb";
+                    if (File.GetLastWriteTime(pdbFile) <= File.GetLastWriteTime(mdbFile))
+                    {
+                        // No newer *.pdb file found
+                        msgOutput?.Invoke($"No mdb file creation needed for {file}. (*.pdb file write time <= *.mdb file write time)");
+                        continue;
+                    }
+
+                    msgOutput?.Invoke($"Creating mdb file for {file}");
+                    try
+                    {
+                        Pdb2Mdb.Converter.Convert(file);
+                    }
+                    catch (Exception ex)
+                    {
+                        msgOutput?.Invoke($"Error while creating mdb file for {file}. {ex.Message}");
+                    }                    
+                }
+
+                msgOutput?.Invoke($"End ConvertPdb2Mdb.");
+            });
         }
     }
 }

@@ -6,42 +6,35 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
 
 namespace MonoRemoteDebugger.Debugger.DebugEngineHost
 {
     public static class HostOutputWindowEx
     {
+        public static VSErrorTextWriter LogInstance { get; internal set; } = new VSErrorTextWriter();
+
         // Use an extra class so that we have a seperate class which depends on VS interfaces
         private static class VsImpl
         {
             internal static void SetText(string outputMessage)
             {
-                int hr;
-
                 var outputWindow = (IVsOutputWindow)Package.GetGlobalService(typeof(SVsOutputWindow));
                 if (outputWindow == null)
+                {
                     return;
+                }
 
                 IVsOutputWindowPane pane;
                 Guid guidDebugOutputPane = VSConstants.GUID_OutWindowDebugPane;
-                hr = outputWindow.GetPane(ref guidDebugOutputPane, out pane);
+                var hr = outputWindow.GetPane(ref guidDebugOutputPane, out pane);
                 if (hr < 0)
+                {
                     return;
-
-                //pane.Clear();
-                //pane.Activate();
+                }
 
                 hr = pane.OutputString(outputMessage);
-                //if (hr < 0)
-                //    return;
-
-                //var shell = (IVsUIShell)Package.GetGlobalService(typeof(SVsUIShell));
-                //if (shell == null)
-                //    return;
-
-                //Guid commandSet = VSConstants.GUID_VSStandardCommandSet97;
-                //object inputVariant = null;
-                //shell.PostExecCommand(commandSet, (uint)VSConstants.VSStd97CmdID.OutputWindow, 0, ref inputVariant);
+                pane.Activate(); // Brings this pane into view
             }
         }
 
@@ -58,6 +51,35 @@ namespace MonoRemoteDebugger.Debugger.DebugEngineHost
             catch (Exception)
             {
             }
+        }
+
+        public static void WriteLineLaunchError(string outputMessage)
+        {
+            try
+            {
+                VsImpl.SetText(outputMessage + Environment.NewLine);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    public class VSErrorTextWriter : TextWriter
+    {
+        public override void WriteLine(string value)
+        {
+            HostOutputWindowEx.WriteLineLaunchError(value);
+        }
+
+        public override void Write(char value)
+        {
+            HostOutputWindowEx.WriteLaunchError(value.ToString());
+        }
+
+        public override Encoding Encoding
+        {
+            get { return Encoding.UTF8; }
         }
     }
 }

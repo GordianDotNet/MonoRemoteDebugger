@@ -1,10 +1,12 @@
-﻿using Mono.Debugger.Soft;
+﻿using System.Collections.Generic;
+using Mono.Debugger.Soft;
 
 namespace MonoRemoteDebugger.Debugger.VisualStudio
 {
     internal class MonoBreakpointLocation
     {
         public MethodMirror Method { get; set; }
-        public long Offset { get; set; }
+        public long IlOffset { get; set; }
+        public int LineDifference { get; internal set; }
     }
 }

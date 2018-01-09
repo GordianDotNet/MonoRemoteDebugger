@@ -24,6 +24,12 @@ namespace Microsoft.MIDebugEngine
             _position = 0;
         }
 
+        // TODO dirty workaround!
+        internal T[] GetData()
+        {
+            return _data;
+        }
+
         public int Clone(out I ppEnum)
         {
             ppEnum = null;

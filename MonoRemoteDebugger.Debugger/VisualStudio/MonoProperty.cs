@@ -19,6 +19,9 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
         private readonly Value _arrayValue;
         private readonly string _arrayIndices;
 
+        public static readonly Guid EnumOnlyFieldsFilter = new Guid("564A1F69-C84D-443F-9B85-FA53CB8E33F9");
+        public static readonly Guid EnumOnlyPropertiesFilter = new Guid("EABA6454-97C0-4F5B-9527-C5ED06EE8493");
+
         public MonoProperty(StackFrame frame, Mirror currentMirror)
         {
             _stackFrame = frame;
@@ -74,34 +77,27 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             {
                 var obj = value as StructMirror;
 
-                var properties = obj.Type.GetProperties().Cast<Mirror>();
-                var fields = obj.Type.GetFields();
-                var children = properties.Concat(fields).ToList();
+                List<KeyValuePair<string, Mirror>> children = GetChildren(obj.Type, guidFilter);
 
-                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x, obj).GetDebugPropertyInfo(dwFields)).ToArray());
+                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x.Value, obj).GetDebugPropertyInfo(dwFields)).ToArray());
                 
                 return VSConstants.S_OK;
             }
             else if (value is ObjectMirror)
             {
                 var obj = value as ObjectMirror;
-                
-                var properties = obj.Type.GetProperties().Cast<Mirror>();
-                var fields = obj.Type.GetFields();
-                
-                var children = properties.Concat(fields).ToList();
 
-                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x, obj).GetDebugPropertyInfo(dwFields)).ToArray());
+                List<KeyValuePair<string, Mirror>> children = GetChildren(obj.Type, guidFilter);
+
+                ppEnum = new AD7PropertyEnum(children.Select(x => new MonoProperty(_stackFrame, x.Value, obj).GetDebugPropertyInfo(dwFields)).ToArray());
                 return VSConstants.S_OK;
             }
             else
             {
-                //TODO
+                System.Diagnostics.Debug.WriteLine($"Error - EnumChildren - Missing {value.GetType().FullName} implementation!");
+                ppEnum = new AD7PropertyEnum(new DEBUG_PROPERTY_INFO[0]);
+                return VSConstants.S_OK;
             }
-
-            //TODO 
-            ppEnum = new AD7PropertyEnum(new DEBUG_PROPERTY_INFO[0]);
-            return VSConstants.S_OK;
         }
         
         private Value GetValue(Mirror mirror, out enum_DBG_ATTRIB_FLAGS attributeInfo, out string errorMessage)
@@ -187,6 +183,10 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                         }
                     }
                 }
+                else if (mirror is Value)
+                {
+                    value = mirror as Value;
+                }
                 else if (mirror != null)
                 {
                     errorMessage = $"Error: Mirror is not supported ({mirror?.GetType().FullName})";
@@ -263,7 +263,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
 
             var mirrorInfo = GetMirrorInfo(_currentMirror) ?? new MirrorCommonInfo { FullName = "UNKNOWN-FullName", Name = "UNKNOWN-Name", Type = null };
 
-            System.Diagnostics.Debug.WriteLine($"GetDebugPropertyInfo: {_currentMirror?.GetType().Name} - typeMirror: {_arrayElementType?.ToString()} childMirror: {_arrayValue?.GetType().FullName}");
+            System.Diagnostics.Debug.WriteLine($"GetDebugPropertyInfo: {mirrorInfo.Name} [{mirrorInfo.FullName}] - typeMirror: {_arrayElementType?.ToString()} childMirror: {_arrayValue?.GetType().FullName}");
                         
             if ((dwFields & enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_FULLNAME) != 0)
             {
@@ -320,9 +320,17 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 }
                 else if (value is StructMirror)
                 {
-                    isExpandable = true;
-                    var obj = ((StructMirror)value);                    
-                    propertyInfo.bstrValue = $"{{{obj.Type.Namespace}.{obj.Type.Name}}}";
+                    if (value is EnumMirror)
+                    {
+                        var obj = ((EnumMirror)value);
+                        propertyInfo.bstrValue = $"{obj.StringValue}";
+                    }
+                    else
+                    {
+                        isExpandable = true;
+                        var obj = ((StructMirror)value);
+                        propertyInfo.bstrValue = $"{{{obj.Type.Namespace}.{obj.Type.Name}}}";
+                    }
                 }
                 else if (value is ObjectMirror)
                 {
@@ -379,6 +387,7 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             var fieldMirror = mirror as FieldInfoMirror;
             var parameterMirror = mirror as ParameterInfoMirror;
             var localMirror = mirror as LocalVariable;
+            var objectMirror = mirror as ObjectMirror;
 
             //if (methodMirror != null)
             //{
@@ -415,6 +424,13 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
                 info.Name = localMirror.Name;
                 info.FullName = localMirror.Type.FullName;
                 info.Type = localMirror.Type;
+            }
+            else if (objectMirror != null)
+            {
+                info = new MirrorCommonInfo();
+                info.Name = "#ObjectMirror#-UNKNOWN-NAME";
+                info.FullName = objectMirror.Type.FullName;
+                info.Type = objectMirror.Type;
             }
 
             return info;
@@ -508,6 +524,27 @@ namespace MonoRemoteDebugger.Debugger.VisualStudio
             }
 
             return attributeInfo;
+        }
+
+        private static List<KeyValuePair<string, Mirror>> GetChildren(TypeMirror type, Guid filterGuid)
+        {
+            var children = new List<KeyValuePair<string, Mirror>>();
+            do
+            {
+                if (filterGuid != EnumOnlyPropertiesFilter)
+                {
+                    children.AddRange(type.GetFields().Select(x => new KeyValuePair<string, Mirror>(x.Name, x)));
+                }
+                if (filterGuid != EnumOnlyFieldsFilter)
+                {
+                    children.AddRange(type.GetProperties().Select(x => new KeyValuePair<string, Mirror>(x.Name, x)));
+                }
+
+                type = type.BaseType;
+            } while (type != null);
+
+            children = children.Where(x => x.Key != null && x.Key.Length > 0 && x.Key[0] != '<').OrderBy(x => x.Key).ToList();
+            return children;
         }
     }
 

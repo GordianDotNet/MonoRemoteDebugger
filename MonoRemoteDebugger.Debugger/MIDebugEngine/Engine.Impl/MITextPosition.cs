@@ -46,9 +46,11 @@ namespace Microsoft.MIDebugEngine
 
             uint lineValue = line.Value;
 
-            Microsoft.VisualStudio.Debugger.Interop.TEXT_POSITION startPosition = new Microsoft.VisualStudio.Debugger.Interop.TEXT_POSITION();
-            startPosition.dwLine = lineValue - 1;
-            startPosition.dwColumn = 0;
+            var startPosition = new TEXT_POSITION()
+            {
+                dwLine = lineValue - 1,
+                dwColumn = 0
+            };
 
             uint? startColumn = miTuple.TryFindUint("col");
             if (startColumn > 0)
@@ -56,7 +58,7 @@ namespace Microsoft.MIDebugEngine
                 startPosition.dwColumn = startColumn.Value - 1;
             }
 
-            Microsoft.VisualStudio.Debugger.Interop.TEXT_POSITION endPosition = startPosition;
+            TEXT_POSITION endPosition = startPosition;
             uint? endLine = miTuple.TryFindUint("end-line");
             if (endLine > 0)
             {

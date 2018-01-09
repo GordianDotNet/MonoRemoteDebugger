@@ -14,8 +14,10 @@ using System.Globalization;
 using MICore;
 using MonoRemoteDebugger.Debugger.DebugEngineHost;
 using System.Diagnostics;
-using Techl;
 using MonoRemoteDebugger.SharedLib;
+using System.Collections.Concurrent;
+using System.Text;
+using MonoRemoteDebugger.SharedLib.Settings;
 
 namespace Microsoft.MIDebugEngine
 {
@@ -32,24 +34,31 @@ namespace Microsoft.MIDebugEngine
         private static readonly NLog.Logger logger = LogManager.GetCurrentClassLogger();
         private readonly AD7Engine _engine;
         private readonly IPAddress _ipAddress;
+        private readonly int _debugPort;
         private readonly List<AD7PendingBreakpoint> _pendingBreakpoints = new List<AD7PendingBreakpoint>();
         private readonly Dictionary<string, TypeSummary> _types = new Dictionary<string, TypeSummary>();
         private volatile bool _isRunning = true;
-        private AD7Thread _mainThread;
+        private ConcurrentDictionary<long, AD7Thread> _threads = new ConcurrentDictionary<long, AD7Thread>();
+        private ConcurrentBag<AD7Assembly> _assemblies = new ConcurrentBag<AD7Assembly>();
         private VirtualMachine _vm;
 
         private EngineCallback _callback;
         public AD_PROCESS_ID Id { get; private set; }
         public ProcessState ProcessState { get; private set; }
+        public bool IsRunning { get { return _isRunning; } }
 
         private StepEventRequest currentStepRequest;
-        private bool isStepping;
-        private IDebugSession session;
+        private bool _isStepping;
+        private IDebugSession _session;
+        private AutoResetEvent _startVMEvent = new AutoResetEvent(false);
+        private DebugOptions _debugOptions;
 
-        public DebuggedProcess(AD7Engine engine, IPAddress ipAddress, EngineCallback callback)
+        public DebuggedProcess(AD7Engine engine, DebugOptions debugOptions, EngineCallback callback)
         {
             _engine = engine;
-            _ipAddress = ipAddress;
+            _debugOptions = debugOptions;
+            _ipAddress = debugOptions.GetHostIP();
+            _debugPort = debugOptions.GetMonoDebugPort();
             Instance = this;
 
             // we do NOT have real Win32 process IDs, so we use a guid
@@ -79,56 +88,121 @@ namespace Microsoft.MIDebugEngine
                 _vm = value;
             }
         }
-
+        
         public event EventHandler ApplicationClosed;
 
         internal void StartDebugging()
         {
+            DebugHelper.TraceEnteringMethod();
+
             if (_vm != null)
                 return;
 
-            _vm = VirtualMachineManager.Connect(new IPEndPoint(_ipAddress, GlobalConfig.Current.DebuggerAgentPort));
-            _vm.EnableEvents(EventType.AssemblyLoad,
-                EventType.ThreadStart,
-                EventType.ThreadDeath,
-                EventType.AssemblyUnload,
-                EventType.UserBreak,
-                EventType.Exception,
-                EventType.UserLog,
-                EventType.KeepAlive,
-                EventType.TypeLoad);
-
-            EventSet set = _vm.GetNextEventSet();
-            if (set.Events.OfType<VMStartEvent>().Any())
+            try
             {
-                //TODO: review by techcap
-                _mainThread = new AD7Thread(_engine, new DebuggedThread(set.Events[0].Thread, _engine));
-                _engine.Callback.ThreadStarted(_mainThread);
+                BeginConnect();
 
-                Task.Factory.StartNew(ReceiveThread, TaskCreationOptions.LongRunning);
+                _vm.EnableEvents(
+                    EventType.VMStart,
+                    EventType.VMDeath,
+                    EventType.ThreadStart,
+                    EventType.ThreadDeath,
+                    EventType.AppDomainCreate,
+                    EventType.AppDomainUnload,
+                    //EventType.MethodEntry,
+                    //EventType.MethodExit,
+                    EventType.AssemblyLoad,
+                    EventType.AssemblyUnload,
+                    //EventType.Breakpoint, // Not allowed via EnableEvents
+                    //EventType.Step,
+                    EventType.TypeLoad,
+                    EventType.Exception,
+                    EventType.KeepAlive,
+                    EventType.UserBreak,
+                    EventType.UserLog,
+                    EventType.VMDisconnect
+                    );
+
+                EventSet set = _vm.GetNextEventSet();
+                if (set.Events.OfType<VMStartEvent>().Any())
+                {
+                    foreach (Event ev in set.Events)
+                    {
+                        HandleEventSet(ev);
+                    }
+
+                    _startVMEvent.Reset();
+
+                    Task.Factory.StartNew(ReceiveThread, TaskCreationOptions.LongRunning);
+                }
+                else
+                {
+                    throw new Exception("Didnt get VMStart-Event!");
+                }
             }
-            else
-                throw new Exception("Didnt get VMStart-Event!");
+            catch (Exception ex)
+            {
+                HostOutputWindowEx.LogInstance.WriteLine(ex.Message);
+                throw;
+            }
+        }
+
+        private void BeginConnect()
+        {
+            var timeout = TimeSpan.FromSeconds(_debugOptions.UserSettings.SSHDebugConnectionTimeout);
+            var asyncResult = VirtualMachineManager.BeginConnect(new IPEndPoint(_ipAddress, _debugPort), ar => { }/*, HostOutputWindowEx.LogInstance*/);
+            var vmTask = Task.Factory.FromAsync(asyncResult, ar => EndConnect(ar));
+
+            var timeoutResult = Task.WaitAny(new Task[] { vmTask }, timeout);
+            if (timeoutResult != 0)
+            {
+                VirtualMachineManager.CancelConnection(asyncResult);
+                throw new Exception($"Error: VirtualMachineManager couldn't connect to {_ipAddress}:{_debugPort} within {timeout.TotalSeconds} seconds.");
+            }
+
+            _vm = vmTask.Result;
+            if (_vm == null)
+            {
+                throw new Exception($"Error: VirtualMachineManager couldn't connect to {_ipAddress}:{_debugPort}. Result was null!");
+            }
+        }
+
+        private VirtualMachine EndConnect(IAsyncResult ar)
+        {
+            _vm = VirtualMachineManager.EndConnect(ar);
+            return _vm;
         }
 
         internal void Attach()
         {
+            DebugHelper.TraceEnteringMethod();
+        }
+
+        internal void StartVMEventHandling()
+        {
+            DebugHelper.TraceEnteringMethod();
+            _startVMEvent.Set();
         }
 
         private void ReceiveThread()
         {
-            Thread.Sleep(3000);
-            _vm.Resume();
+            if (!_startVMEvent.WaitOne(5000))
+            {
+                logger.Error($"Error {nameof(ReceiveThread)}(): {nameof(StartVMEventHandling)} wasn't called!");
+            }
+
+            ResumeVM();
 
             while (_isRunning)
             {
                 try
                 {
+                    DebugHelper.TraceEnteringMethod();
                     EventSet set = _vm.GetNextEventSet();
 
                     var type = set.Events.First().EventType;
-                    if (type != EventType.TypeLoad)
-                        Debug.Print($"Event : {set.Events.Select(e => e.EventType).StringJoin(",")}");
+                    //if (type != EventType.TypeLoad)
+                    //    Debug.Print($"Event : {set.Events.Select(e => e.EventType).StringJoin(",")}");
 
                     foreach (Event ev in set.Events)
                     {
@@ -138,69 +212,172 @@ namespace Microsoft.MIDebugEngine
                 catch (VMNotSuspendedException)
                 {
                 }
+                catch (Exception ex)
+                {
+                    logger.Error(ex);
+                }
             }
         }
-
+        
         private void HandleEventSet(Event ev)
         {
             var type = ev.EventType;
+            _engine.IsSuspended = true;
 
-            switch (type)
-            {
-                case EventType.Breakpoint:
-                    if (!HandleBreakPoint((BreakpointEvent)ev))
-                        return;
-                    break;
-                case EventType.Step:
-                    HandleStep((StepEvent)ev);
-                    return;
-                case EventType.TypeLoad:
-                    var typeEvent = (TypeLoadEvent)ev;
-                    RegisterType(typeEvent.Type);
-                    TryBindBreakpoints();
-                    break;
-
-                case EventType.UserLog:
-                    UserLogEvent e = (UserLogEvent)ev;
-                    HostOutputWindowEx.WriteLaunchError(e.Message);
-                    break;
-                case EventType.VMDeath:
-                case EventType.VMDisconnect:
-                    Disconnect();
-                    return;
-                default:
-                    logger.Trace(ev);
-                    break;
-            }
-
+            logger.Trace($"HandleEventSet: {ev}");
+            
             try
             {
-                _vm.Resume();
+                switch (type)
+                {
+                    case EventType.AssemblyLoad:
+                        HandleAssemblyLoad((AssemblyLoadEvent)ev);
+                        break;
+                    case EventType.UserBreak:
+                        if (!HandleUserBreak((UserBreakEvent)ev))
+                            return;
+                        break;
+                    case EventType.Breakpoint:
+                        if (!HandleBreakPoint((BreakpointEvent)ev))
+                            return;
+                        break;
+                    case EventType.Step:
+                        HandleStep((StepEvent)ev);
+                        return;
+                    case EventType.TypeLoad:
+                        var typeEvent = (TypeLoadEvent)ev;
+                        RegisterType(typeEvent.Type);
+                        TryBindBreakpoints();
+                        break;
+                    case EventType.UserLog:
+                        UserLogEvent e = (UserLogEvent)ev;
+                        HostOutputWindowEx.WriteLaunchError(e.Message);
+                        break;
+                    case EventType.VMDeath:
+                    case EventType.VMDisconnect:
+                        Disconnect();
+                        return;
+                    case EventType.VMStart:
+                    case EventType.ThreadStart:
+                        var domain = ev.Thread.Domain.FriendlyName;
+                        var threadId = ev.Thread.ThreadId;
+                        var newThread = new AD7Thread(_engine, ev.Thread);
+                        if (_threads.TryAdd(threadId, newThread))
+                        {
+                            _engine.Callback.ThreadStarted(newThread);
+                        }
+                        else
+                        {
+                            logger.Error($"Thread {threadId} already added!");
+                        }
+                        break;
+                    case EventType.ThreadDeath:
+                        var oldThreadId = ev.Thread.ThreadId;
+                        AD7Thread oldThread = null;
+                        if (!_threads.TryRemove(oldThreadId, out oldThread))
+                        {
+                            _engine.Callback.ThreadDestroyed(oldThread, 0);
+                        }
+                        else
+                        {
+                            logger.Error($"Thread {oldThreadId} not found!");
+                        }
+                        break;
+                    case EventType.Exception:
+                        var exEvent = ev as ExceptionEvent;
+                        var exceptionObjectMirror = exEvent.Exception;
+                        // TODO Reading properties from complex exceptions throws an exception. Why?
+                        var filter = MonoProperty.EnumOnlyFieldsFilter;
+                        IEnumDebugPropertyInfo2 propInfo;
+                        var monoProperty = new MonoProperty(exEvent.Thread.GetFrames().FirstOrDefault(), exceptionObjectMirror);
+                        var propInfo1 = new DEBUG_PROPERTY_INFO[1];
+                        monoProperty.GetPropertyInfo(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, 10000, null, 0, propInfo1);
+                        monoProperty.EnumChildren(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ALL, 0, ref filter, enum_DBG_ATTRIB_FLAGS.DBG_ATTRIB_ACCESS_ALL, "", 10000, out propInfo);
+                        var sbException = new StringBuilder();
+                        sbException.AppendLine($"Excption thrown: {exceptionObjectMirror.Type.FullName}");
+                        var propInfoCast = propInfo as AD7PropertyEnum;
+                        foreach (var prop in propInfoCast.GetData())
+                        {
+                            if (prop.bstrName.StartsWith("_message") || prop.bstrName.StartsWith("_innerException"))
+                            {
+                                sbException.AppendLine($"{prop.bstrName} = {prop.bstrValue}");
+                            }
+                        }
+                        logger.Error($"Exception thrown: {sbException.ToString()}");
+                        HostOutputWindowEx.WriteLaunchError($"Exception thrown: {sbException.ToString()}");
+                        break;
+                    default:
+                        logger.Trace(ev);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, $"Exception thrown in {nameof(HandleEventSet)}({ev})");
+            }
+            
+            try
+            {
+                if (type != EventType.VMStart)
+                {
+                    logger.Trace($"HandleEventSet: ResumeVM ({ev})");
+                    ResumeVM();
+                }
             }
             catch (VMNotSuspendedException)
             {
                 if (type != EventType.VMStart && _vm.Version.AtLeast(2, 2))
                     throw;
             }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
+            }
+        }
+
+        
+
+        private AD7Thread GetThread(Event ev)
+        {
+            var domain = ev.Thread.Domain.FriendlyName;
+            var threadId = ev.Thread.ThreadId;
+            return _threads[threadId];
+        }
+
+        internal AD7Thread[] GetThreads()
+        {
+            return _threads.Values.ToArray();
+        }
+
+        internal AD7Assembly[] GetLoadedAssemblies()
+        {
+            return _assemblies.ToArray();
+        }
+
+        private void HandleAssemblyLoad(AssemblyLoadEvent ev)
+        {
+            _assemblies.Add(new AD7Assembly(_engine, ev.Assembly));
         }
 
         private void HandleStep(StepEvent stepEvent)
         {
+            DebugHelper.TraceEnteringMethod();
             if (currentStepRequest != null)
             {
                 currentStepRequest.Enabled = false;
                 currentStepRequest = null;
             }
 
-            _engine.Callback.StepCompleted(_mainThread);
+            _engine.Callback.StepCompleted(GetThread(stepEvent));
             logger.Trace("Stepping: {0}:{1}", stepEvent.Method.Name, stepEvent.Location);
 
-            isStepping = false;
+            _isStepping = false;
         }
 
         private bool HandleBreakPoint(BreakpointEvent ev)
         {
-            if (isStepping)
+            DebugHelper.TraceEnteringMethod();
+            if (_isStepping)
                 return true;
 
             bool resume = false;
@@ -213,7 +390,28 @@ namespace Microsoft.MIDebugEngine
                 return true;
 
             Mono.Debugger.Soft.StackFrame[] frames = ev.Thread.GetFrames();
-            _engine.Callback.BreakpointHit(bp, _mainThread);
+            _engine.Callback.BreakpointHit(bp, GetThread(ev));
+
+            return resume;
+        }
+        
+        private bool HandleUserBreak(UserBreakEvent ev)
+        {
+            DebugHelper.TraceEnteringMethod();
+            if (_isStepping)
+                return true;
+
+            bool resume = false;
+
+            AD7PendingBreakpoint bp;
+            lock (_pendingBreakpoints)
+                bp = _pendingBreakpoints.FirstOrDefault(x => x.LastRequest == ev.Request);
+
+            if (bp == null)
+                return true;
+
+            Mono.Debugger.Soft.StackFrame[] frames = ev.Thread.GetFrames();
+            _engine.Callback.BreakpointHit(bp, GetThread(ev));
 
             return resume;
         }
@@ -235,22 +433,23 @@ namespace Microsoft.MIDebugEngine
                     {
                         try
                         {
-                            int ilOffset;
-                            RoslynHelper.GetILOffset(bp, location.Method, out ilOffset);
-
-                            BreakpointEventRequest request = _vm.SetBreakpoint(location.Method, ilOffset);
+                            BreakpointEventRequest request = _vm.SetBreakpoint(location.Method, location.IlOffset);
                             request.Enable();
                             bp.Bound = true;
                             bp.LastRequest = request;
                             _engine.Callback.BoundBreakpoint(bp);
-                            //_vm.Resume();
-                            bp.CurrentThread = _mainThread;
+                            //_vm.Resume();                            
+                            //bp.CurrentThread = null;
                             countBounded++;
                         }
                         catch (Exception ex)
                         {
                             logger.Error("Cant bind breakpoint: " + ex);
                         }
+                    }
+                    else
+                    {
+                        logger.Error($"Cant bind breakpoint: {bp.DocumentName}:{bp.StartLine}");
                     }
                 }
             }
@@ -264,6 +463,7 @@ namespace Microsoft.MIDebugEngine
 
         private void Disconnect()
         {
+            DebugHelper.TraceEnteringMethod();
             _isRunning = false;
             Terminate();
             if (ApplicationClosed != null)
@@ -288,6 +488,7 @@ namespace Microsoft.MIDebugEngine
 
         public void Close()
         {
+            DebugHelper.TraceEnteringMethod();
             //if (_launchOptions.DeviceAppLauncher != null)
             //{
             //    _launchOptions.DeviceAppLauncher.Terminate();
@@ -297,10 +498,12 @@ namespace Microsoft.MIDebugEngine
 
         internal void WaitForAttach()
         {
+            DebugHelper.TraceEnteringMethod();
         }
 
         internal void Break()
         {
+            DebugHelper.TraceEnteringMethod();
             //TODO: techcap
             _vm.Suspend();
         }
@@ -309,8 +512,9 @@ namespace Microsoft.MIDebugEngine
         /// On First run
         /// </summary>
         /// <param name="thread"></param>
-        internal void Continue(DebuggedThread thread)
+        internal void Continue(AD7Thread thread)
         {
+            DebugHelper.TraceEnteringMethod();
             //_vm.Resume();
         }
 
@@ -322,25 +526,36 @@ namespace Microsoft.MIDebugEngine
         /// <summary>
         /// For Run
         /// </summary>
-        /// <param name="debuggedMonoThread"></param>
-        internal void Execute(AD7Thread debuggedMonoThread)
+        /// <param name="thread"></param>
+        internal void Execute(AD7Thread thread)
         {
-            _vm.Resume();
+            DebugHelper.TraceEnteringMethod();
+            try
+            {
+                ResumeVM();
+            }
+            catch (Exception)
+            {
+                // TODO
+                throw;
+            }
         }
 
 
         internal void Terminate()
         {
+            DebugHelper.TraceEnteringMethod();
             try
             {
                 if (_vm != null)
                 {
+                    _vm.Exit(0);
                     _vm.ForceDisconnect();
                     _vm = null;
                 }
 
 
-                session.Disconnect();
+                _session.Disconnect();
             }
             catch
             {
@@ -349,6 +564,7 @@ namespace Microsoft.MIDebugEngine
 
         public void Detach()
         {
+            DebugHelper.TraceEnteringMethod();
             Terminate();
         }
 
@@ -370,7 +586,8 @@ namespace Microsoft.MIDebugEngine
 
         internal void Step(AD7Thread thread, enum_STEPKIND sk, enum_STEPUNIT stepUnit)
         {
-            if (!isStepping)
+            DebugHelper.TraceEnteringMethod();
+            if (!_isStepping)
             {
                 if (currentStepRequest == null)
                     currentStepRequest = _vm.CreateStepRequest(thread.ThreadMirror);
@@ -379,7 +596,7 @@ namespace Microsoft.MIDebugEngine
                     currentStepRequest.Disable();
                 }
 
-                isStepping = true;
+                _isStepping = true;
                 if (stepUnit == enum_STEPUNIT.STEP_LINE || stepUnit == enum_STEPUNIT.STEP_STATEMENT)
                 {
                     switch (sk)
@@ -408,12 +625,12 @@ namespace Microsoft.MIDebugEngine
                 currentStepRequest.Enable();
             }
 
-            _vm.Resume();
+            ResumeVM();
         }
 
         public void AssociateDebugSession(IDebugSession session)
         {
-            this.session = session;
+            this._session = session;
         }
 
         //{bhlee
@@ -433,6 +650,13 @@ namespace Microsoft.MIDebugEngine
             string exceptionMessage = e.Message.TrimEnd(' ', '\t', '.', '\r', '\n');
             string userMessage = string.Format(CultureInfo.CurrentCulture, MICoreResources.Error_ExceptionInOperation, exceptionMessage);
             _callback.OnError(userMessage);
+        }
+
+        private void ResumeVM()
+        {
+            DebugHelper.TraceEnteringMethod();
+            _engine.IsSuspended = false;
+            _vm?.Resume();
         }
     }
 }
