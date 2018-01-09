@@ -39,8 +39,8 @@
         <TextBlock Grid.Row="5" Grid.Column="0" Text="Remote Deploy Path:" VerticalAlignment="Center" Margin="5" />
         <TextBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding SSHDeployPath}" Margin="5" />
 
-        <TextBlock Grid.Row="6" Grid.Column="0" Text="pdb2mdb command:" VerticalAlignment="Center" Margin="5" />
-        <TextBox Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding SSHPdb2mdbCommand}" Margin="5" />
+        <!--<TextBlock Grid.Row="6" Grid.Column="0" Text="pdb2mdb command:" VerticalAlignment="Center" Margin="5" />
+        <TextBox Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding SSHPdb2mdbCommand}" Margin="5" />-->
 
         <TextBlock Grid.Row="7" Grid.Column="0" Text="Debug connection Timeout:" VerticalAlignment="Center" Margin="5" />
         <TextBox Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding SSHDebugConnectionTimeout}" Margin="5" />

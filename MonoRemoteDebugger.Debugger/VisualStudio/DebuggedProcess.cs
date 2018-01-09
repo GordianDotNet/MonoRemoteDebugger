@@ -534,7 +534,7 @@ namespace Microsoft.MIDebugEngine
             {
                 ResumeVM();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // TODO
                 throw;

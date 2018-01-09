@@ -42,8 +42,9 @@ namespace MonoRemoteDebugger.SharedLib.SSH
                         if (deploy)
                         {
                             sshDeltaCopy.DeployDirectory(options.SourceDirectory, options.DestinationDirectory);
-                            var createMdbCommand = sshDeltaCopy.RunSSHCommand($@"find . -regex '.*\(exe\|dll\)' -exec {debugOptions.UserSettings.SSHPdb2mdbCommand} {{}} \;", false);
-                            msgOutput(createMdbCommand.Result);
+                            // We are creating mdb files on local machine with pdb2mdb
+                            //var createMdbCommand = sshDeltaCopy.RunSSHCommand($@"find . -regex '.*\(exe\|dll\)' -exec {debugOptions.UserSettings.SSHPdb2mdbCommand} {{}} \;", false);
+                            //msgOutput(createMdbCommand.Result);
                         }
 
                         if (debug)

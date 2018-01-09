@@ -182,18 +182,6 @@
       <HintPath>..\packages\VSSDK.Threading.12.0.4\lib\net45\Microsoft.VisualStudio.Threading.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Mono.Cecil, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.dll</HintPath>
-    </Reference>
-    <Reference Include="Mono.Cecil.Mdb, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Mdb.dll</HintPath>
-    </Reference>
-    <Reference Include="Mono.Cecil.Pdb, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Pdb.dll</HintPath>
-    </Reference>
-    <Reference Include="Mono.Cecil.Rocks, Version=0.10.0.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Rocks.dll</HintPath>
-    </Reference>
     <Reference Include="Mono.Debugger.Soft, Version=0.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\Assemblies\Mono.Debugging.VisualStudio.4.9.10-pre\Mono.Debugger.Soft.dll</HintPath>
@@ -358,6 +346,10 @@
     <ProjectReference Include="..\MonoRemoteDebugger.SharedLib\MonoRemoteDebugger.SharedLib.csproj">
       <Project>{fe76aee5-c4e3-45ed-aa18-29df82ab405c}</Project>
       <Name>MonoRemoteDebugger.SharedLib</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\pdb2mdb\pdb2mdb.csproj">
+      <Project>{91f10f69-efdc-4231-94b2-10b65699d1f1}</Project>
+      <Name>pdb2mdb</Name>
     </ProjectReference>
   </ItemGroup>
   <PropertyGroup>

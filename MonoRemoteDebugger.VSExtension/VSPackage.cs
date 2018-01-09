@@ -43,7 +43,7 @@ namespace MonoRemoteDebugger.VSExtension
             MonoLogger.Setup();
 
             base.Initialize();
-
+            
             var dte = (DTE)GetService(typeof(DTE));
             _monoExtension = new MonoVisualStudioExtension(dte);
 
@@ -295,6 +295,11 @@ namespace MonoRemoteDebugger.VSExtension
                     PrintTimings = true,
                     RemoveTempDeleteListFile = true,
                 };
+
+                if (deploy)
+                {
+                    await _monoExtension.ConvertPdb2Mdb(options.SourceDirectory, HostOutputWindowEx.WriteLineLaunchError);
+                }
 
                 System.Threading.Tasks.Task monoRemoteSshDebugTask;
                 if (startDebugger)

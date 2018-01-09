@@ -311,5 +311,46 @@ namespace MonoRemoteDebugger.VSExtension
 
             return debugOptions;
         }
+
+        public Task ConvertPdb2Mdb(string outputDirectory, Action<string> msgOutput)
+        {
+            return System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                msgOutput?.Invoke($"Start ConvertPdb2Mdb: {outputDirectory} ...");
+
+                var assemblyFiles = Directory.EnumerateFiles(outputDirectory, "*.exe", SearchOption.AllDirectories)
+                    .Union(Directory.EnumerateFiles(outputDirectory, "*.dll", SearchOption.AllDirectories));
+
+                foreach (string file in assemblyFiles)
+                {
+                    var pdbFile = Path.ChangeExtension(file, "pdb");
+                    if (!File.Exists(pdbFile))
+                    {
+                        // No *.pdb file found for file
+                        continue;
+                    }
+
+                    var mdbFile = file + ".mdb";
+                    if (File.GetLastWriteTime(pdbFile) <= File.GetLastWriteTime(mdbFile))
+                    {
+                        // No newer *.pdb file found
+                        msgOutput?.Invoke($"No mdb file creation needed for {file}. (*.pdb file write time <= *.mdb file write time)");
+                        continue;
+                    }
+
+                    msgOutput?.Invoke($"Creating mdb file for {file}");
+                    try
+                    {
+                        Pdb2Mdb.Converter.Convert(file);
+                    }
+                    catch (Exception ex)
+                    {
+                        msgOutput?.Invoke($"Error while creating mdb file for {file}. {ex.Message}");
+                    }                    
+                }
+
+                msgOutput?.Invoke($"End ConvertPdb2Mdb.");
+            });
+        }
     }
 }

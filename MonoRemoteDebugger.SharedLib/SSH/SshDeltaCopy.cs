@@ -442,6 +442,8 @@ namespace SshFileSync
             }
             catch (Exception ex)
             {
+                // TODO log verbose messages differently
+                var msg = ex.Message;
                 PrintTime($"Remote file cache '{_uploadCacheFileName}' not found! We are uploading all files!");
             }
 
