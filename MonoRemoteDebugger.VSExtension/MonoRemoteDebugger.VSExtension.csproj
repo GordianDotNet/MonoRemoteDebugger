@@ -335,9 +335,7 @@
       <ManifestResourceName>VSPackage</ManifestResourceName>
     </EmbeddedResource>
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Mono.Debugging.VisualStudio\" />
-  </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
     <ProjectReference Include="..\MonoRemoteDebugger.Debugger\MonoRemoteDebugger.Debugger.csproj">
       <Project>{c99840f2-29f7-44fc-a152-3cdd7fc41b21}</Project>
